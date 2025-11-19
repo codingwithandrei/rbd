@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Master Roll Registration - RBD App</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1 class="logo">Master Roll Registration</h1>
+            <p class="subtitle">Register new master rolls</p>
+        </header>
+
+        <main class="main-content">
+            <div class="form-container">
+                <form id="masterRollForm">
+                    <div class="form-group">
+                        <label for="stockNumber" class="form-label">Stock Number</label>
+                        <input 
+                            type="text" 
+                            id="stockNumber" 
+                            name="stockNumber" 
+                            class="form-input" 
+                            placeholder="Enter stock number"
+                            required
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="lotNumber" class="form-label">Lot Number</label>
+                        <input 
+                            type="text" 
+                            id="lotNumber" 
+                            name="lotNumber" 
+                            class="form-input" 
+                            placeholder="Enter lot number"
+                            required
+                        >
+                    </div>
+
+                    <div id="messageContainer"></div>
+
+                    <div class="button-group">
+                        <button type="button" class="btn btn-secondary" onclick="navigateTo('index.html')">Back</button>
+                        <button type="submit" class="btn btn-primary">Register Master Roll</button>
+                    </div>
+                </form>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <p>&copy; 2024 RBD Manufacturing</p>
+        </footer>
+    </div>
+
+    <script src="database.js"></script>
+    <script src="app.js"></script>
+    <script src="master-roll.js"></script>
+</body>
+</html>
+

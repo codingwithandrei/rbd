@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Select Roll - RBD App</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1 class="logo">Select Roll</h1>
+            <p class="subtitle" id="qrInfo">Choose an available roll to use</p>
+        </header>
+
+        <main class="main-content">
+            <div class="form-container">
+                <div id="rollsListContainer">
+                    <!-- Available rolls will be displayed here -->
+                </div>
+
+                <div id="messageContainer"></div>
+
+                <div class="button-group" style="margin-top: 30px;">
+                    <button type="button" class="btn btn-secondary" onclick="navigateTo('index.html')">Back to Home</button>
+                </div>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <p>&copy; 2024 RBD Manufacturing</p>
+        </footer>
+    </div>
+
+    <script src="database.js"></script>
+    <script src="app.js"></script>
+    <script src="select-roll.js"></script>
+</body>
+</html>
+

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventory - RBD App</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1 class="logo">Inventory</h1>
+            <p class="subtitle">View all master rolls and their status</p>
+        </header>
+
+        <main class="main-content">
+            <div class="form-container">
+                <div id="inventoryContainer">
+                    <!-- Inventory will be displayed here -->
+                </div>
+
+                <div class="button-group" style="margin-top: 30px;">
+                    <button type="button" class="btn btn-primary" onclick="navigateTo('index.html')">Return to Home</button>
+                    <button type="button" class="btn btn-secondary" onclick="refreshInventory()">Refresh</button>
+                    <button type="button" class="btn btn-yellow" onclick="seedTestData()">Load Test Data</button>
+                </div>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <p>&copy; 2024 RBD Manufacturing</p>
+        </footer>
+    </div>
+
+    <script src="database.js"></script>
+    <script src="app.js"></script>
+    <script>
+        // Ensure database is initialized before loading inventory
+        document.addEventListener('DOMContentLoaded', function() {
+            if (typeof DB !== 'undefined') {
+                DB.init();
+                
+                // Seed test data if database is empty
+                const qrCodes = DB.qrCodes.getAll();
+                if (qrCodes.length === 0) {
+                    DB.seedTestData();
+                }
+            }
+        });
+    </script>
+    <script src="inventory.js"></script>
+</body>
+</html>
+

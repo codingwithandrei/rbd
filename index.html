@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RBD App - Master Roll</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1 class="logo">RBD Master Roll</h1>
+            <p class="subtitle">Manufacturing Management System</p>
+        </header>
+
+        <main class="main-content">
+            <div class="options-grid">
+                <div class="option-card" onclick="navigateTo('master-roll.html')">
+                    <div class="card-icon">📋</div>
+                    <h2>Master Roll Registration</h2>
+                    <p>Register new master rolls with stock and lot numbers</p>
+                </div>
+
+                <div class="option-card" onclick="navigateTo('job-assignment.html')">
+                    <div class="card-icon">✂️</div>
+                    <h2>Job Assignment</h2>
+                    <p>Split master rolls into production rolls</p>
+                </div>
+
+                <div class="option-card" onclick="navigateTo('generate-qr.html')">
+                    <div class="card-icon">🔲</div>
+                    <h2>Generate QR Codes</h2>
+                    <p>Create QR codes with lot and stock numbers</p>
+                </div>
+
+                <div class="option-card" onclick="navigateTo('inventory.html')">
+                    <div class="card-icon">📦</div>
+                    <h2>Inventory</h2>
+                    <p>View all master rolls grouped by stock number</p>
+                </div>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <p>&copy; 2024 RBD Manufacturing</p>
+        </footer>
+    </div>
+
+    <script src="database.js"></script>
+    <script src="app.js"></script>
+    <script>
+        // Check if QR code parameters are present
+        document.addEventListener('DOMContentLoaded', function() {
+            // Ensure database is initialized
+            if (typeof DB !== 'undefined') {
+                DB.init();
+                
+                // Seed test data if database is empty
+                const qrCodes = DB.qrCodes.getAll();
+                if (qrCodes.length === 0) {
+                    DB.seedTestData();
+                }
+            }
+            const urlParams = new URLSearchParams(window.location.search);
+            const qrValue = urlParams.get('qr');
+            const lot = urlParams.get('lot');
+            const stock = urlParams.get('stock');
+
+            if (qrValue || (lot && stock)) {
+                // Construct QR value from parameters
+                const finalQRValue = qrValue || `${lot}-${stock}`;
+                
+                // Determine stage and route accordingly
+                const stage = DB.getQRStage(finalQRValue);
+                
+                if (stage === 'stage1') {
+                    // Route to Master Roll Registration
+                    window.location.href = `master-roll.html?qr=${encodeURIComponent(finalQRValue)}&lot=${encodeURIComponent(lot || '')}&stock=${encodeURIComponent(stock || '')}`;
+                } else if (stage === 'stage2') {
+                    // Route to Job Assignment
+                    window.location.href = `job-assignment.html?qr=${encodeURIComponent(finalQRValue)}`;
+                } else if (stage === 'stage3') {
+                    // Route to Select Roll
+                    window.location.href = `select-roll.html?qr=${encodeURIComponent(finalQRValue)}`;
+                } else if (stage === 'all_used') {
+                    // Show message that all rolls are used
+                    document.querySelector('.main-content').innerHTML = `
+                        <div class="form-container">
+                            <div class="error-message">
+                                <h3>All Rolls Used</h3>
+                                <p>All rolls from this master roll have already been used.</p>
+                                <p style="margin-top: 12px;"><strong>QR Code:</strong> ${finalQRValue}</p>
+                            </div>
+                            <div class="button-group" style="margin-top: 20px;">
+                                <button class="btn btn-primary" onclick="navigateTo('index.html')">Return to Home</button>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    // QR code not found, show options
+                    // Keep default landing page
+                }
+            }
+        });
+    </script>
+</body>
+</html>
+
