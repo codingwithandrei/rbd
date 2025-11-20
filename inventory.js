@@ -28,159 +28,234 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
     
     // Small delay to ensure DB is ready
-    setTimeout(() => {
-        loadInventory();
+    setTimeout(async () => {
+        try {
+            await loadInventory();
+        } catch (error) {
+            console.error('Error loading inventory:', error);
+            const container = document.getElementById('inventoryContainer');
+            if (container) {
+                container.innerHTML = `
+                    <div class="error-message">
+                        <h3 style="margin-bottom: 12px;">Error Loading Inventory</h3>
+                        <p>Failed to load inventory data. Please check the console for details.</p>
+                        <p style="margin-top: 12px; font-size: 0.9rem; color: var(--gray-600);">Error: ${error.message}</p>
+                    </div>
+                    <div class="button-group" style="margin-top: 20px;">
+                        <button class="btn btn-secondary" onclick="location.reload()">Reload Page</button>
+                    </div>
+                `;
+            }
+        }
     }, 100);
 });
 
 async function loadInventory() {
     const container = document.getElementById('inventoryContainer');
+    if (!container) {
+        console.error('Inventory container not found');
+        return;
+    }
     
-    if (currentView === 'stocks') {
-        await displayStockGroups();
-    } else if (currentView === 'lots') {
-        await displayLotsForStock(selectedStockNumber);
-    } else if (currentView === 'details') {
-        await displayLotDetails(selectedStockNumber, selectedLotNumber);
+    try {
+        if (currentView === 'stocks') {
+            await displayStockGroups();
+        } else if (currentView === 'lots') {
+            await displayLotsForStock(selectedStockNumber);
+        } else if (currentView === 'details') {
+            await displayLotDetails(selectedStockNumber, selectedLotNumber);
+        }
+    } catch (error) {
+        console.error('Error in loadInventory:', error);
+        throw error;
     }
 }
 
 async function displayStockGroups() {
     const container = document.getElementById('inventoryContainer');
-    const masterRolls = await DB.masterRolls.getAll();
-    const qrCodes = await DB.qrCodes.getAll();
-    const childRolls = await DB.childRolls.getAll();
-    
-    // Debug: Log what we have
-    console.log('=== INVENTORY DEBUG ===');
-    console.log('Master Rolls:', masterRolls);
-    console.log('QR Codes:', qrCodes);
-    console.log('Child Rolls:', childRolls);
-    console.log('Total counts:', {
-        masterRolls: masterRolls.length,
-        qrCodes: qrCodes.length,
-        childRolls: childRolls.length
-    });
-    
-    // Create a map of all items - use qrValue as unique key to avoid duplicates
-    const allItems = {};
-    
-    // Add registered master rolls (these take priority)
-    masterRolls.forEach(roll => {
-        const key = roll.qrValue; // Use qrValue as unique key
-        allItems[key] = {
-            stockNumber: roll.stockNumber,
-            lotNumber: roll.lotNumber,
-            qrValue: roll.qrValue,
-            status: roll.status,
-            registeredAt: roll.registeredAt,
-            slitAt: roll.slitAt,
-            isRegistered: true
-        };
-    });
-    
-    // Add unregistered QR codes (only if not already in allItems)
-    qrCodes.forEach(qr => {
-        const key = qr.qrValue;
-        if (!allItems[key]) {
-            allItems[key] = {
-                stockNumber: qr.stockNumber,
-                lotNumber: qr.lotNumber,
-                qrValue: qr.qrValue,
-                status: 'unregistered',
-                createdAt: qr.createdAt,
-                isRegistered: false
-            };
-        }
-    });
-    
-    const allItemsArray = Object.values(allItems);
-    console.log('All items array:', allItemsArray);
-    
-    if (allItemsArray.length === 0) {
-        container.innerHTML = `
-            <div class="error-message">
-                <h3 style="margin-bottom: 12px;">No QR Codes or Master Rolls Found</h3>
-                <p>No QR codes have been generated or master rolls registered yet.</p>
-            </div>
-        `;
+    if (!container) {
+        console.error('Container not found in displayStockGroups');
         return;
     }
-
-    // Group by stock number (normalize stock numbers - trim whitespace)
-    const stockGroups = {};
-    allItemsArray.forEach(item => {
-        const normalizedStock = String(item.stockNumber).trim();
-        if (!stockGroups[normalizedStock]) {
-            stockGroups[normalizedStock] = [];
-        }
-        stockGroups[normalizedStock].push(item);
-    });
     
-    console.log('Stock groups:', stockGroups);
+    try {
+        console.log('Fetching data from Firestore...');
+        const masterRolls = await DB.masterRolls.getAll();
+        const qrCodes = await DB.qrCodes.getAll();
+        const childRolls = await DB.childRolls.getAll();
+    
+        // Debug: Log what we have
+        console.log('=== INVENTORY DEBUG ===');
+        console.log('Master Rolls:', masterRolls);
+        console.log('QR Codes:', qrCodes);
+        console.log('Child Rolls:', childRolls);
+        console.log('Total counts:', {
+            masterRolls: masterRolls.length,
+            qrCodes: qrCodes.length,
+            childRolls: childRolls.length
+        });
+        
+        // Helper function to convert Firestore timestamps to strings
+        const convertTimestamp = (timestamp) => {
+            if (!timestamp) return null;
+            if (timestamp.toDate) {
+                // Firestore Timestamp
+                return timestamp.toDate().toISOString();
+            } else if (timestamp instanceof Date) {
+                return timestamp.toISOString();
+            } else if (typeof timestamp === 'string') {
+                return timestamp;
+            }
+            return null;
+        };
+        
+        // Create a map of all items - use qrValue as unique key to avoid duplicates
+        const allItems = {};
+        
+        // Add registered master rolls (these take priority)
+        masterRolls.forEach(roll => {
+            const key = roll.qrValue; // Use qrValue as unique key
+            allItems[key] = {
+                stockNumber: roll.stockNumber,
+                lotNumber: roll.lotNumber,
+                qrValue: roll.qrValue,
+                status: roll.status,
+                registeredAt: convertTimestamp(roll.registeredAt),
+                slitAt: convertTimestamp(roll.slitAt),
+                isRegistered: true
+            };
+        });
+        
+        // Add unregistered QR codes (only if not already in allItems)
+        qrCodes.forEach(qr => {
+            const key = qr.qrValue;
+            if (!allItems[key]) {
+                allItems[key] = {
+                    stockNumber: qr.stockNumber,
+                    lotNumber: qr.lotNumber,
+                    qrValue: qr.qrValue,
+                    status: 'unregistered',
+                    createdAt: convertTimestamp(qr.createdAt),
+                    isRegistered: false
+                };
+            }
+        });
+        
+        const allItemsArray = Object.values(allItems);
+        console.log('All items array:', allItemsArray);
+    
+        if (allItemsArray.length === 0) {
+            container.innerHTML = `
+                <div class="error-message">
+                    <h3 style="margin-bottom: 12px;">No QR Codes or Master Rolls Found</h3>
+                    <p>No QR codes have been generated or master rolls registered yet.</p>
+                    <p style="margin-top: 12px; font-size: 0.9rem; color: var(--gray-600);">
+                        If you just created QR codes, try clicking the "Refresh" button.
+                    </p>
+                </div>
+            `;
+            return;
+        }
 
-    // Sort stock numbers
-    const stockNumbers = Object.keys(stockGroups).sort();
+        // Group by stock number (normalize stock numbers - trim whitespace)
+        const stockGroups = {};
+        allItemsArray.forEach(item => {
+            const normalizedStock = String(item.stockNumber || '').trim();
+            if (normalizedStock) {
+                if (!stockGroups[normalizedStock]) {
+                    stockGroups[normalizedStock] = [];
+                }
+                stockGroups[normalizedStock].push(item);
+            }
+        });
+        
+        console.log('Stock groups:', stockGroups);
 
-    container.innerHTML = `
-        <h3 class="form-title" style="font-size: 1.5rem; margin-bottom: 20px;">Master Rolls by Stock Number</h3>
-        <p class="form-subtitle" style="margin-bottom: 24px;">
-            Click on a stock number to view all lot numbers
-        </p>
-        <div class="stock-groups-container">
-            ${stockNumbers.map(stockNumber => {
-                const lots = stockGroups[stockNumber];
-                const totalLots = lots.length;
-                const registeredCount = lots.filter(r => r.isRegistered && r.status === 'registered').length;
-                // Count as "slit" if status is 'slit' OR has child rolls
-                // Note: slitCount calculation will be done async in the template
-                const slitCount = lots.filter(r => r.isRegistered && r.status === 'slit').length;
-                const unregisteredCount = lots.filter(r => !r.isRegistered).length;
-                
-                return `
-                    <div class="stock-group-card" onclick="selectStock('${stockNumber}')">
-                        <div class="stock-card-header">
-                            <h4>Stock Number: ${stockNumber}</h4>
-                            <div class="stock-badge">${totalLots} ${totalLots === 1 ? 'Lot' : 'Lots'}</div>
-                        </div>
-                        <div class="stock-card-body">
-                            <div class="stock-stats">
-                                <div class="stat-item">
-                                    <span class="stat-label">Total Lots:</span>
-                                    <span class="stat-value">${totalLots}</span>
-                                </div>
-                                ${unregisteredCount > 0 ? `
-                                <div class="stat-item">
-                                    <span class="stat-label">Unregistered:</span>
-                                    <span class="stat-value" style="color: var(--gray-600);">${unregisteredCount}</span>
-                                </div>
-                                ` : ''}
-                                <div class="stat-item">
-                                    <span class="stat-label">Registered:</span>
-                                    <span class="stat-value">${registeredCount}</span>
-                                </div>
-                                <div class="stat-item">
-                                    <span class="stat-label">Slit:</span>
-                                    <span class="stat-value">${slitCount}</span>
+        // Sort stock numbers
+        const stockNumbers = Object.keys(stockGroups).sort();
+
+        if (stockNumbers.length === 0) {
+            container.innerHTML = `
+                <div class="error-message">
+                    <h3 style="margin-bottom: 12px;">No Stock Numbers Found</h3>
+                    <p>Data was found but no valid stock numbers could be extracted.</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = `
+            <h3 class="form-title" style="font-size: 1.5rem; margin-bottom: 20px;">Master Rolls by Stock Number</h3>
+            <p class="form-subtitle" style="margin-bottom: 24px;">
+                Click on a stock number to view all lot numbers
+            </p>
+            <div class="stock-groups-container">
+                ${stockNumbers.map(stockNumber => {
+                    const lots = stockGroups[stockNumber];
+                    const totalLots = lots.length;
+                    const registeredCount = lots.filter(r => r.isRegistered && r.status === 'registered').length;
+                    // Count as "slit" if status is 'slit' OR has child rolls
+                    // Note: slitCount calculation will be done async in the template
+                    const slitCount = lots.filter(r => r.isRegistered && r.status === 'slit').length;
+                    const unregisteredCount = lots.filter(r => !r.isRegistered).length;
+                    
+                    return `
+                        <div class="stock-group-card" onclick="selectStock('${stockNumber}')">
+                            <div class="stock-card-header">
+                                <h4>Stock Number: ${stockNumber}</h4>
+                                <div class="stock-badge">${totalLots} ${totalLots === 1 ? 'Lot' : 'Lots'}</div>
+                            </div>
+                            <div class="stock-card-body">
+                                <div class="stock-stats">
+                                    <div class="stat-item">
+                                        <span class="stat-label">Total Lots:</span>
+                                        <span class="stat-value">${totalLots}</span>
+                                    </div>
+                                    ${unregisteredCount > 0 ? `
+                                    <div class="stat-item">
+                                        <span class="stat-label">Unregistered:</span>
+                                        <span class="stat-value" style="color: var(--gray-600);">${unregisteredCount}</span>
+                                    </div>
+                                    ` : ''}
+                                    <div class="stat-item">
+                                        <span class="stat-label">Registered:</span>
+                                        <span class="stat-value">${registeredCount}</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="stat-label">Slit:</span>
+                                        <span class="stat-value">${slitCount}</span>
+                                    </div>
                                 </div>
                             </div>
+                            <div class="stock-card-footer">
+                                <button class="btn btn-primary btn-block" onclick="event.stopPropagation(); selectStock('${stockNumber}');">
+                                    View Lots
+                                </button>
+                            </div>
                         </div>
-                        <div class="stock-card-footer">
-                            <button class="btn btn-primary btn-block" onclick="event.stopPropagation(); selectStock('${stockNumber}');">
-                                View Lots
-                            </button>
-                        </div>
-                    </div>
-                `;
-            }).join('')}
-        </div>
-    `;
+                    `;
+                }).join('')}
+            </div>
+        `;
+    } catch (error) {
+        console.error('Error in displayStockGroups:', error);
+        container.innerHTML = `
+            <div class="error-message">
+                <h3 style="margin-bottom: 12px;">Error Displaying Inventory</h3>
+                <p>Failed to load inventory data. Please check the console for details.</p>
+                <p style="margin-top: 12px; font-size: 0.9rem; color: var(--gray-600);">Error: ${error.message}</p>
+                <pre style="margin-top: 12px; font-size: 0.8rem; background: var(--gray-50); padding: 12px; border-radius: 8px; overflow-x: auto;">${error.stack}</pre>
+            </div>
+        `;
+    }
 }
 
 function selectStock(stockNumber) {
     selectedStockNumber = stockNumber;
     currentView = 'lots';
-    loadInventory();
+    loadInventory().catch(error => {
+        console.error('Error loading lots:', error);
+    });
 }
 
 function displayLotsForStock(stockNumber) {
@@ -318,7 +393,9 @@ function selectLot(stockNumber, lotNumber) {
     selectedStockNumber = stockNumber;
     selectedLotNumber = lotNumber;
     currentView = 'details';
-    loadInventory();
+    loadInventory().catch(error => {
+        console.error('Error loading lot details:', error);
+    });
 }
 
 async function displayLotDetails(stockNumber, lotNumber) {

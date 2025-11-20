@@ -11,7 +11,18 @@ const DB = {
     
     // Helper to convert Firestore document to plain object
     _docToObject(doc) {
-        return { id: doc.id, ...doc.data() };
+        const data = doc.data();
+        // Convert Firestore Timestamps to ISO strings
+        const converted = {};
+        for (const key in data) {
+            if (data[key] && typeof data[key] === 'object' && data[key].toDate) {
+                // Firestore Timestamp
+                converted[key] = data[key].toDate().toISOString();
+            } else {
+                converted[key] = data[key];
+            }
+        }
+        return { id: doc.id, ...converted };
     },
     
     // Initialize database (Firebase initialization)
