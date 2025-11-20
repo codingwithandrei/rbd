@@ -74,15 +74,26 @@ async function loadInventory() {
 async function displayStockGroups() {
     const container = document.getElementById('inventoryContainer');
     if (!container) {
-        console.error('Container not found in displayStockGroups');
+        console.error('❌ Container not found in displayStockGroups');
         return;
     }
     
     try {
-        console.log('Fetching data from Firestore...');
+        console.log('📊 Fetching data from Firestore...');
+        console.log('📊 DB object:', DB);
+        console.log('📊 DB.storageType:', DB.storageType);
+        
+        // Show loading state
+        container.innerHTML = '<p style="text-align: center; padding: 20px;">Loading inventory...</p>';
+        
         const masterRolls = await DB.masterRolls.getAll();
+        console.log('📊 Master rolls fetched:', masterRolls);
+        
         const qrCodes = await DB.qrCodes.getAll();
+        console.log('📊 QR codes fetched:', qrCodes);
+        
         const childRolls = await DB.childRolls.getAll();
+        console.log('📊 Child rolls fetched:', childRolls);
     
         // Debug: Log what we have
         console.log('=== INVENTORY DEBUG ===');

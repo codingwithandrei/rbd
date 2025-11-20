@@ -6,7 +6,12 @@ const DB = {
     
     // Get Firestore instance
     _getDB() {
-        return getFirestore();
+        const db = getFirestore();
+        if (!db) {
+            console.error('❌ Firestore instance is null! Firebase may not be initialized.');
+            throw new Error('Firestore not initialized');
+        }
+        return db;
     },
     
     // Helper to convert Firestore document to plain object
@@ -292,10 +297,18 @@ const DB = {
         async getAll() {
             try {
                 const db = DB._getDB();
+                console.log('📋 Fetching all QR codes from Firestore...');
                 const snapshot = await db.collection('qrCodes').get();
-                return snapshot.docs.map(doc => DB._docToObject(doc));
+                const codes = snapshot.docs.map(doc => DB._docToObject(doc));
+                console.log(`✅ Retrieved ${codes.length} QR codes:`, codes);
+                return codes;
             } catch (error) {
-                console.error('Error getting QR codes:', error);
+                console.error('❌ Error getting QR codes:', error);
+                console.error('Error details:', {
+                    message: error.message,
+                    code: error.code,
+                    stack: error.stack
+                });
                 return [];
             }
         },
@@ -304,11 +317,35 @@ const DB = {
         async getByValue(qrValue) {
             try {
                 const db = DB._getDB();
+                console.log('🔍 Searching for QR code with value:', qrValue);
                 const snapshot = await db.collection('qrCodes').where('qrValue', '==', qrValue).limit(1).get();
-                if (snapshot.empty) return null;
-                return DB._docToObject(snapshot.docs[0]);
+                console.log('🔍 Query result:', {
+                    empty: snapshot.empty,
+                    size: snapshot.size,
+                    docs: snapshot.docs.map(doc => ({ id: doc.id, data: doc.data() }))
+                });
+                if (snapshot.empty) {
+                    console.log('⚠️ No QR code found with value:', qrValue);
+                    // Try to get all QR codes to see what we have
+                    const allQRCodes = await db.collection('qrCodes').get();
+                    console.log('📋 All QR codes in database:', allQRCodes.docs.map(doc => ({
+                        id: doc.id,
+                        qrValue: doc.data().qrValue,
+                        lotNumber: doc.data().lotNumber,
+                        stockNumber: doc.data().stockNumber
+                    })));
+                    return null;
+                }
+                const result = DB._docToObject(snapshot.docs[0]);
+                console.log('✅ Found QR code:', result);
+                return result;
             } catch (error) {
-                console.error('Error getting QR code by value:', error);
+                console.error('❌ Error getting QR code by value:', error);
+                console.error('Error details:', {
+                    message: error.message,
+                    code: error.code,
+                    stack: error.stack
+                });
                 return null;
             }
         },
