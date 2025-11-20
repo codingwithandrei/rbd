@@ -3,24 +3,28 @@ let currentView = 'stocks'; // 'stocks', 'lots', 'details'
 let selectedStockNumber = null;
 let selectedLotNumber = null;
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
     // Ensure database is initialized
     if (typeof DB !== 'undefined') {
-        DB.init();
-        
-        // Clear test data if it exists (one-time cleanup)
-        if (typeof DB.clearTestData === 'function') {
-            DB.clearTestData();
+        try {
+            await DB.init();
+            
+            // Clear test data if it exists (one-time cleanup)
+            if (typeof DB.clearTestData === 'function') {
+                await DB.clearTestData();
+            }
+            
+            // Log current database state for debugging
+            const snapshot = await DB.getSnapshot();
+            console.log('=== INVENTORY PAGE LOADED ===');
+            console.log('Database snapshot:', snapshot);
+            console.log('Storage type:', DB.storageType);
+            console.log('Master Rolls:', snapshot.masterRolls);
+            console.log('Child Rolls:', snapshot.childRolls);
+            console.log('QR Codes:', snapshot.qrCodes);
+        } catch (error) {
+            console.error('Failed to initialize database:', error);
         }
-        
-        // Log current database state for debugging
-        const snapshot = DB.getSnapshot();
-        console.log('=== INVENTORY PAGE LOADED ===');
-        console.log('Database snapshot:', snapshot);
-        console.log('Storage type:', DB.storageType);
-        console.log('Master Rolls:', snapshot.masterRolls);
-        console.log('Child Rolls:', snapshot.childRolls);
-        console.log('QR Codes:', snapshot.qrCodes);
     }
     
     // Small delay to ensure DB is ready
@@ -29,23 +33,23 @@ document.addEventListener('DOMContentLoaded', function() {
     }, 100);
 });
 
-function loadInventory() {
+async function loadInventory() {
     const container = document.getElementById('inventoryContainer');
     
     if (currentView === 'stocks') {
-        displayStockGroups();
+        await displayStockGroups();
     } else if (currentView === 'lots') {
-        displayLotsForStock(selectedStockNumber);
+        await displayLotsForStock(selectedStockNumber);
     } else if (currentView === 'details') {
-        displayLotDetails(selectedStockNumber, selectedLotNumber);
+        await displayLotDetails(selectedStockNumber, selectedLotNumber);
     }
 }
 
-function displayStockGroups() {
+async function displayStockGroups() {
     const container = document.getElementById('inventoryContainer');
-    const masterRolls = DB.masterRolls.getAll();
-    const qrCodes = DB.qrCodes.getAll();
-    const childRolls = DB.childRolls.getAll();
+    const masterRolls = await DB.masterRolls.getAll();
+    const qrCodes = await DB.qrCodes.getAll();
+    const childRolls = await DB.childRolls.getAll();
     
     // Debug: Log what we have
     console.log('=== INVENTORY DEBUG ===');
@@ -129,12 +133,8 @@ function displayStockGroups() {
                 const totalLots = lots.length;
                 const registeredCount = lots.filter(r => r.isRegistered && r.status === 'registered').length;
                 // Count as "slit" if status is 'slit' OR has child rolls
-                const slitCount = lots.filter(r => {
-                    if (!r.isRegistered) return false;
-                    if (r.status === 'slit') return true;
-                    const childRolls = DB.childRolls.getByMasterQR(r.qrValue);
-                    return childRolls.length > 0;
-                }).length;
+                // Note: slitCount calculation will be done async in the template
+                const slitCount = lots.filter(r => r.isRegistered && r.status === 'slit').length;
                 const unregisteredCount = lots.filter(r => !r.isRegistered).length;
                 
                 return `
@@ -239,6 +239,17 @@ function displayLotsForStock(stockNumber) {
     // Sort by lot number
     lots.sort((a, b) => a.lotNumber.localeCompare(b.lotNumber));
 
+    // Get child rolls for all lots
+    const lotsWithData = await Promise.all(lots.map(async (roll) => {
+        const childRolls = await DB.childRolls.getByMasterQR(roll.qrValue);
+        const availableRolls = childRolls.filter(r => r.status === 'AVAILABLE').length;
+        const usedRolls = childRolls.filter(r => r.status === 'USED').length;
+        const isSlit = roll.status === 'slit' || childRolls.length > 0;
+        const isUnregistered = !roll.isRegistered;
+        
+        return { roll, childRolls, availableRolls, usedRolls, isSlit, isUnregistered };
+    }));
+
     container.innerHTML = `
         <div style="margin-bottom: 20px;">
             <button class="btn btn-secondary btn-small" onclick="goBackToStocks()" style="margin-bottom: 16px;">
@@ -252,22 +263,7 @@ function displayLotsForStock(stockNumber) {
             </p>
         </div>
         <div class="lots-container">
-            ${lots.map(roll => {
-                const childRolls = DB.childRolls.getByMasterQR(roll.qrValue);
-                const availableRolls = childRolls.filter(r => r.status === 'AVAILABLE').length;
-                const usedRolls = childRolls.filter(r => r.status === 'USED').length;
-                // Check if it's slit - either status is 'slit' OR has child rolls
-                const isSlit = roll.status === 'slit' || childRolls.length > 0;
-                const isUnregistered = !roll.isRegistered;
-                
-                // Debug log for each lot
-                console.log(`Lot ${roll.lotNumber}:`, {
-                    qrValue: roll.qrValue,
-                    status: roll.status,
-                    childRollsCount: childRolls.length,
-                    isSlit: isSlit
-                });
-                
+            ${lotsWithData.map(({ roll, childRolls, availableRolls, usedRolls, isSlit, isUnregistered }) => {
                 return `
                     <div class="lot-card" onclick="selectLot('${stockNumber}', '${roll.lotNumber}')">
                         <div class="lot-card-header">
@@ -325,10 +321,10 @@ function selectLot(stockNumber, lotNumber) {
     loadInventory();
 }
 
-function displayLotDetails(stockNumber, lotNumber) {
+async function displayLotDetails(stockNumber, lotNumber) {
     const container = document.getElementById('inventoryContainer');
-    const masterRolls = DB.masterRolls.getAll();
-    const qrCodes = DB.qrCodes.getAll();
+    const masterRolls = await DB.masterRolls.getAll();
+    const qrCodes = await DB.qrCodes.getAll();
     
     // Find the specific master roll or QR code
     let masterRoll = masterRolls.find(roll => 
@@ -595,10 +591,10 @@ function goBackToLots() {
     loadInventory();
 }
 
-function refreshInventory() {
+async function refreshInventory() {
     // Force reload from database
     console.log('Refreshing inventory...');
-    const snapshot = DB.getSnapshot();
+    const snapshot = await DB.getSnapshot();
     console.log('Current database state:', snapshot);
     console.log('Master Rolls count:', snapshot.masterRolls.length);
     console.log('QR Codes count:', snapshot.qrCodes.length);
@@ -609,7 +605,7 @@ function refreshInventory() {
     selectedStockNumber = null;
     selectedLotNumber = null;
     
-    loadInventory();
+    await loadInventory();
 }
 
 

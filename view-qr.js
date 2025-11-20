@@ -1,5 +1,12 @@
 // QR Code View functionality - Now routes to appropriate stage
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
+    // Initialize database
+    try {
+        await DB.init();
+    } catch (error) {
+        console.error('Failed to initialize database:', error);
+    }
+    
     const displayContainer = document.getElementById('qrInfoDisplay');
     
     // Get URL parameters
@@ -13,7 +20,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (finalQRValue) {
         // Determine stage and redirect
-        const stage = DB.getQRStage(finalQRValue);
+        const stage = await DB.getQRStage(finalQRValue);
         
         if (stage === 'stage1') {
             // Redirect to Master Roll Registration

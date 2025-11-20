@@ -10,17 +10,24 @@ const PRESET_SIZES = [225, 241, 325];
 const MAX_TOTAL_SIZE = 1300;
 
 // Initialize: Get QR value and verify master roll
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
+    // Initialize database
+    try {
+        await DB.init();
+    } catch (error) {
+        console.error('Failed to initialize database:', error);
+    }
+    
     const urlParams = new URLSearchParams(window.location.search);
     qrValue = urlParams.get('qr');
 
     if (qrValue) {
         // Verify master roll exists and is in correct stage
-        masterRoll = DB.masterRolls.getByQR(qrValue);
+        masterRoll = await DB.masterRolls.getByQR(qrValue);
         
         if (!masterRoll) {
             // Check if QR code exists in database
-            const qrCode = DB.qrCodes.getByValue(qrValue);
+            const qrCode = await DB.qrCodes.getByValue(qrValue);
             if (qrCode) {
                 // Auto-fill lot and stock from QR code
                 document.getElementById('lotNumber').value = qrCode.lotNumber || '';
@@ -49,7 +56,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Check if already slit
             if (masterRoll.status !== 'registered') {
-                const childRolls = DB.childRolls.getByMasterQR(qrValue);
+                const childRolls = await DB.childRolls.getByMasterQR(qrValue);
                 if (childRolls.length > 0) {
                     alert('This master roll has already been slit. Redirecting to roll selection...');
                     navigateTo(`select-roll.html?qr=${encodeURIComponent(qrValue)}`);
@@ -288,7 +295,7 @@ function goBackToStep1() {
     numberOfRolls = 0;
 }
 
-function submitJobAssignment() {
+async function submitJobAssignment() {
     // Validate all rolls have sizes
     const incompleteRolls = rolls.filter(roll => !roll.size);
     if (incompleteRolls.length > 0) {
@@ -316,114 +323,119 @@ function submitJobAssignment() {
 
     const finalQRValue = qrValue;
     
-    // Verify master roll exists
-    if (!masterRoll) {
-        masterRoll = DB.masterRolls.getByQR(finalQRValue);
+    try {
+        // Verify master roll exists
         if (!masterRoll) {
-            // Check if QR code exists - if so, auto-create master roll
-            const qrCode = DB.qrCodes.getByValue(finalQRValue);
-            if (qrCode) {
-                // Auto-create master roll from QR code
-                masterRoll = DB.masterRolls.create({
-                    qrValue: finalQRValue,
-                    stockNumber: qrCode.stockNumber,
-                    lotNumber: qrCode.lotNumber
-                });
-            } else {
-                alert('Master roll not found. Please register the master roll first.');
-                navigateTo('index.html');
-                return;
+            masterRoll = await DB.masterRolls.getByQR(finalQRValue);
+            if (!masterRoll) {
+                // Check if QR code exists - if so, auto-create master roll
+                const qrCode = await DB.qrCodes.getByValue(finalQRValue);
+                if (qrCode) {
+                    // Auto-create master roll from QR code
+                    masterRoll = await DB.masterRolls.create({
+                        qrValue: finalQRValue,
+                        stockNumber: qrCode.stockNumber,
+                        lotNumber: qrCode.lotNumber
+                    });
+                } else {
+                    alert('Master roll not found. Please register the master roll first.');
+                    navigateTo('index.html');
+                    return;
+                }
             }
         }
-    }
 
-    // Extract widths from rolls
-    const widths = rolls.map(roll => roll.size);
+        // Extract widths from rolls
+        const widths = rolls.map(roll => roll.size);
 
-    // Use the entered job number as job ID
-    const jobId = jobNumber || `job-${Date.now()}`;
+        // Use the entered job number as job ID
+        const jobId = jobNumber || `job-${Date.now()}`;
 
-    // Create child rolls (Stage 2) with job ID
-    const childRolls = DB.childRolls.createBatch(finalQRValue, widths, jobId);
+        // Create child rolls (Stage 2) with job ID
+        await DB.childRolls.createBatch(finalQRValue, widths, jobId);
 
-    // Mark master roll as slit
-    DB.masterRolls.markAsSlit(finalQRValue);
+        // Mark master roll as slit
+        await DB.masterRolls.markAsSlit(finalQRValue);
 
-    // Log scan event
-    DB.scanEvents.create({
-        qrValue: finalQRValue,
-        action: 'slitting',
-        childRollId: null
-    });
-    
-    // Debug: Log what was created and verify
-    console.log('Job Assignment - Saving data...', {
-        qrValue: finalQRValue,
-        widths: widths,
-        numberOfRolls: widths.length
-    });
-    
-    // Verify data was actually saved
-    const verifyMasterRoll = DB.masterRolls.getByQR(finalQRValue);
-    const verifyChildRolls = DB.childRolls.getByMasterQR(finalQRValue);
-    
-    console.log('Job Assignment - Verification:', {
-        masterRoll: verifyMasterRoll,
-        childRollsCount: verifyChildRolls.length,
-        expectedCount: widths.length,
-        childRolls: verifyChildRolls
-    });
-    
-    if (!verifyMasterRoll) {
-        console.error('ERROR: Master roll was not saved!');
-        alert('ERROR: Failed to save master roll. Check console for details.');
-        return;
-    }
-    
-    if (verifyMasterRoll.status !== 'slit') {
-        console.error('ERROR: Master roll status was not updated to "slit"!');
-        alert('ERROR: Master roll status update failed. Check console for details.');
-        return;
-    }
-    
-    if (verifyChildRolls.length !== widths.length) {
-        console.error('ERROR: Child rolls count mismatch!', {
-            expected: widths.length,
-            actual: verifyChildRolls.length
+        // Log scan event
+        await DB.scanEvents.create({
+            qrValue: finalQRValue,
+            action: 'slitting',
+            childRollId: null
         });
-        alert(`ERROR: Only ${verifyChildRolls.length} of ${widths.length} child rolls were saved. Check console for details.`);
-        return;
+        
+        // Debug: Log what was created and verify
+        console.log('Job Assignment - Saving data...', {
+            qrValue: finalQRValue,
+            widths: widths,
+            numberOfRolls: widths.length
+        });
+        
+        // Verify data was actually saved
+        const verifyMasterRoll = await DB.masterRolls.getByQR(finalQRValue);
+        const verifyChildRolls = await DB.childRolls.getByMasterQR(finalQRValue);
+        
+        console.log('Job Assignment - Verification:', {
+            masterRoll: verifyMasterRoll,
+            childRollsCount: verifyChildRolls.length,
+            expectedCount: widths.length,
+            childRolls: verifyChildRolls
+        });
+        
+        if (!verifyMasterRoll) {
+            console.error('ERROR: Master roll was not saved!');
+            alert('ERROR: Failed to save master roll. Check console for details.');
+            return;
+        }
+        
+        if (verifyMasterRoll.status !== 'slit') {
+            console.error('ERROR: Master roll status was not updated to "slit"!');
+            alert('ERROR: Master roll status update failed. Check console for details.');
+            return;
+        }
+        
+        if (verifyChildRolls.length !== widths.length) {
+            console.error('ERROR: Child rolls count mismatch!', {
+                expected: widths.length,
+                actual: verifyChildRolls.length
+            });
+            alert(`ERROR: Only ${verifyChildRolls.length} of ${widths.length} child rolls were saved. Check console for details.`);
+            return;
+        }
+        
+        console.log('✓ Verification passed - All data saved successfully');
+
+        // Show success message with verification
+        const totalSize = widths.reduce((sum, width) => sum + width, 0);
+        document.getElementById('successDetails').innerHTML = `
+            <p><strong>Job Number:</strong> ${jobNumber}</p>
+            <p><strong>Master Roll:</strong> ${finalQRValue}</p>
+            <p><strong>Stock Number:</strong> ${verifyMasterRoll.stockNumber}</p>
+            <p><strong>Lot Number:</strong> ${verifyMasterRoll.lotNumber}</p>
+            <p><strong>Number of Rolls Created:</strong> ${numberOfRolls}</p>
+            <p><strong>Total Size:</strong> ${totalSize}mm</p>
+            <p><strong>Remaining:</strong> ${MAX_TOTAL_SIZE - totalSize}mm</p>
+            <p style="margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(16, 185, 129, 0.3);">
+                <strong>Status:</strong> Master roll is now slit. Child rolls are available for use.
+            </p>
+            <p style="margin-top: 12px; font-size: 0.9rem; color: var(--gray-600);">
+                ✓ Data saved to database. You can view this in Inventory.
+            </p>
+            <p style="margin-top: 8px; font-size: 0.9rem; color: var(--success-green); font-weight: 600;">
+                ✓ Verified: ${verifyChildRolls.length} child rolls saved | Master roll status: ${verifyMasterRoll.status}
+            </p>
+        `;
+
+        document.getElementById('step2').style.display = 'none';
+        document.getElementById('step3').style.display = 'block';
+        
+        // Log final state for debugging
+        const snapshot = await DB.getSnapshot();
+        console.log('Final database state:', snapshot);
+    } catch (error) {
+        console.error('Error submitting job assignment:', error);
+        alert('ERROR: Failed to save job assignment. ' + error.message);
     }
-    
-    console.log('✓ Verification passed - All data saved successfully');
-
-    // Show success message with verification
-    const totalSize = widths.reduce((sum, width) => sum + width, 0);
-    const updatedMasterRoll = DB.masterRolls.getByQR(finalQRValue);
-    document.getElementById('successDetails').innerHTML = `
-        <p><strong>Job Number:</strong> ${jobNumber}</p>
-        <p><strong>Master Roll:</strong> ${finalQRValue}</p>
-        <p><strong>Stock Number:</strong> ${updatedMasterRoll.stockNumber}</p>
-        <p><strong>Lot Number:</strong> ${updatedMasterRoll.lotNumber}</p>
-        <p><strong>Number of Rolls Created:</strong> ${numberOfRolls}</p>
-        <p><strong>Total Size:</strong> ${totalSize}mm</p>
-        <p><strong>Remaining:</strong> ${MAX_TOTAL_SIZE - totalSize}mm</p>
-        <p style="margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(16, 185, 129, 0.3);">
-            <strong>Status:</strong> Master roll is now slit. Child rolls are available for use.
-        </p>
-        <p style="margin-top: 12px; font-size: 0.9rem; color: var(--gray-600);">
-            ✓ Data saved to database. You can view this in Inventory.
-        </p>
-        <p style="margin-top: 8px; font-size: 0.9rem; color: var(--success-green); font-weight: 600;">
-            ✓ Verified: ${verifyChildRolls.length} child rolls saved | Master roll status: ${verifyMasterRoll.status}
-        </p>
-    `;
-
-    document.getElementById('step2').style.display = 'none';
-    document.getElementById('step3').style.display = 'block';
-    
-    // Log final state for debugging
-    console.log('Final database state:', DB.getSnapshot());
 }
 
 function createNewAssignment() {

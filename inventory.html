@@ -31,13 +31,20 @@
         </footer>
     </div>
 
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="firebase-config.js"></script>
     <script src="database.js"></script>
     <script src="app.js"></script>
     <script>
         // Ensure database is initialized before loading inventory
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', async function() {
             if (typeof DB !== 'undefined') {
-                DB.init();
+                try {
+                    await DB.init();
+                } catch (error) {
+                    console.error('Failed to initialize database:', error);
+                }
             }
         });
     </script>

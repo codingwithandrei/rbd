@@ -76,7 +76,7 @@ function goBackToStep1() {
     numberOfQRCodes = 0;
 }
 
-function generateQRCodes() {
+async function generateQRCodes() {
     // Collect all data
     const allValid = true;
     
@@ -165,37 +165,43 @@ function generateQRCodes() {
 
         // Save to database with verification
         console.log('Saving QR codes to database...', generatedQRCodes);
-        generatedQRCodes.forEach(qr => {
-            // Create QR code record in database (if not already exists)
-            if (!DB.qrCodes.getByValue(qr.qrValue)) {
-                try {
-                    const saved = DB.qrCodes.create({
-                        qrValue: qr.qrValue,
-                        lotNumber: qr.lotNumber,
-                        stockNumber: qr.stockNumber
-                    });
-                    
-                    // Verify it was saved
-                    const verify = DB.qrCodes.getByValue(qr.qrValue);
-                    if (!verify) {
-                        console.error(`ERROR: QR code ${qr.qrValue} was not saved!`);
+        try {
+            for (const qr of generatedQRCodes) {
+                // Create QR code record in database (if not already exists)
+                const existing = await DB.qrCodes.getByValue(qr.qrValue);
+                if (!existing) {
+                    try {
+                        const saved = await DB.qrCodes.create({
+                            qrValue: qr.qrValue,
+                            lotNumber: qr.lotNumber,
+                            stockNumber: qr.stockNumber
+                        });
+                        
+                        // Verify it was saved
+                        const verify = await DB.qrCodes.getByValue(qr.qrValue);
+                        if (!verify) {
+                            console.error(`ERROR: QR code ${qr.qrValue} was not saved!`);
+                            alert(`ERROR: Failed to save QR code ${qr.qrValue}. Check console.`);
+                        } else {
+                            console.log(`✓ QR code ${qr.qrValue} saved and verified`);
+                        }
+                    } catch (error) {
+                        console.error(`Error saving QR code ${qr.qrValue}:`, error);
                         alert(`ERROR: Failed to save QR code ${qr.qrValue}. Check console.`);
-                    } else {
-                        console.log(`✓ QR code ${qr.qrValue} saved and verified`);
                     }
-                } catch (error) {
-                    console.error(`Error saving QR code ${qr.qrValue}:`, error);
-                    alert(`ERROR: Failed to save QR code ${qr.qrValue}. Check console.`);
+                } else {
+                    console.log(`QR code ${qr.qrValue} already exists, skipping`);
                 }
-            } else {
-                console.log(`QR code ${qr.qrValue} already exists, skipping`);
             }
-        });
-        
-        // Final verification
-        const allQRCodes = DB.qrCodes.getAll();
-        console.log(`Total QR codes in database: ${allQRCodes.length}`);
-        console.log('All QR codes:', allQRCodes);
+            
+            // Final verification
+            const allQRCodes = await DB.qrCodes.getAll();
+            console.log(`Total QR codes in database: ${allQRCodes.length}`);
+            console.log('All QR codes:', allQRCodes);
+        } catch (error) {
+            console.error('Error saving QR codes:', error);
+            alert('ERROR: Failed to save QR codes to database. Check console.');
+        }
 
     // Show step 3
     document.getElementById('step2').style.display = 'none';

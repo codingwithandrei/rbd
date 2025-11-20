@@ -1,135 +1,81 @@
-// Local Database Management
-// This file handles all database operations using localStorage when available.
-// If localStorage is blocked (e.g., running from the filesystem or private mode),
-// it falls back to an in-memory store so the app keeps working.
-
-const storageProvider = (() => {
-    const memoryStore = {};
-    const hasLocalStorage = (() => {
-        try {
-            const testKey = '__db_test__';
-            window.localStorage.setItem(testKey, 'test');
-            window.localStorage.removeItem(testKey);
-            return true;
-        } catch (error) {
-            console.warn('localStorage unavailable, falling back to in-memory store:', error);
-            return false;
-        }
-    })();
-
-    if (hasLocalStorage) {
-        return {
-            type: 'localStorage',
-            getItem: key => window.localStorage.getItem(key),
-            setItem: (key, value) => window.localStorage.setItem(key, value),
-            removeItem: key => window.localStorage.removeItem(key)
-        };
-    }
-
-    return {
-        type: 'memory',
-        getItem: key => Object.prototype.hasOwnProperty.call(memoryStore, key) ? memoryStore[key] : null,
-        setItem: (key, value) => {
-            memoryStore[key] = value;
-        },
-        removeItem: key => {
-            delete memoryStore[key];
-        }
-    };
-})();
-
-function readCollection(key) {
-    try {
-        const raw = storageProvider.getItem(key);
-        if (!raw) {
-            return [];
-        }
-        return JSON.parse(raw);
-    } catch (error) {
-        console.error(`Error reading collection "${key}":`, error);
-        return [];
-    }
-}
-
-function writeCollection(key, data) {
-    try {
-        const jsonString = JSON.stringify(data);
-        storageProvider.setItem(key, jsonString);
-        
-        // Verify the write worked
-        const verify = storageProvider.getItem(key);
-        if (verify !== jsonString) {
-            throw new Error(`Write verification failed for "${key}"`);
-        }
-        
-        console.log(`✓ Successfully wrote ${data.length} items to "${key}"`);
-        return true;
-    } catch (error) {
-        console.error(`✗ Error writing collection "${key}":`, error);
-        alert(`Database Error: Failed to save ${key}. Check console for details.`);
-        return false;
-    }
-}
+// Firestore Database Management
+// This file handles all database operations using Firebase Firestore
 
 const DB = {
-    storageType: storageProvider.type,
-    getSnapshot() {
-        return {
-            storageType: DB.storageType,
-            masterRolls: DB.masterRolls.getAll(),
-            childRolls: DB.childRolls.getAll(),
-            qrCodes: DB.qrCodes.getAll(),
-            scanEvents: DB.scanEvents.getAll()
-        };
+    storageType: 'firestore',
+    
+    // Get Firestore instance
+    _getDB() {
+        return getFirestore();
     },
-    // Database keys
-    KEYS: {
-        MASTER_ROLLS: 'masterRolls',
-        CHILD_ROLLS: 'childRolls',
-        QR_CODES: 'qrCodes',
-        SCAN_EVENTS: 'scanEvents'
+    
+    // Helper to convert Firestore document to plain object
+    _docToObject(doc) {
+        return { id: doc.id, ...doc.data() };
     },
-
-    // Initialize database structure
-    init() {
+    
+    // Initialize database (Firebase initialization)
+    async init() {
         try {
-            if (!storageProvider.getItem(this.KEYS.MASTER_ROLLS)) {
-                writeCollection(this.KEYS.MASTER_ROLLS, []);
-            }
-            if (!storageProvider.getItem(this.KEYS.CHILD_ROLLS)) {
-                writeCollection(this.KEYS.CHILD_ROLLS, []);
-            }
-            if (!storageProvider.getItem(this.KEYS.QR_CODES)) {
-                writeCollection(this.KEYS.QR_CODES, []);
-            }
-            if (!storageProvider.getItem(this.KEYS.SCAN_EVENTS)) {
-                writeCollection(this.KEYS.SCAN_EVENTS, []);
-            }
-            console.log(`Database initialized using ${DB.storageType}`);
+            await initializeFirebase();
+            console.log('✓ Database initialized using Firestore');
         } catch (error) {
             console.error('Database initialization error:', error);
+            throw error;
         }
     },
-
-    // Clear test data (removes pre-entered test entries)
-    clearTestData() {
+    
+    // Get snapshot of all data
+    async getSnapshot() {
+        try {
+            const [masterRolls, childRolls, qrCodes, scanEvents] = await Promise.all([
+                this.masterRolls.getAll(),
+                this.childRolls.getAll(),
+                this.qrCodes.getAll(),
+                this.scanEvents.getAll()
+            ]);
+            return {
+                storageType: this.storageType,
+                masterRolls,
+                childRolls,
+                qrCodes,
+                scanEvents
+            };
+        } catch (error) {
+            console.error('Error getting snapshot:', error);
+            return {
+                storageType: this.storageType,
+                masterRolls: [],
+                childRolls: [],
+                qrCodes: [],
+                scanEvents: []
+            };
+        }
+    },
+    
+    // Clear test data
+    async clearTestData() {
         try {
             const testQRValues = ['123-1234', 'abc-1234', '12ab-4321'];
+            const db = this._getDB();
             
             // Remove test QR codes
-            const qrCodes = this.qrCodes.getAll();
-            const filteredQRCodes = qrCodes.filter(qr => !testQRValues.includes(qr.qrValue));
-            writeCollection(DB.KEYS.QR_CODES, filteredQRCodes);
+            const qrCodesSnapshot = await db.collection('qrCodes').where('qrValue', 'in', testQRValues).get();
+            const qrBatch = db.batch();
+            qrCodesSnapshot.forEach(doc => qrBatch.delete(doc.ref));
+            await qrBatch.commit();
             
             // Remove test master rolls
-            const masterRolls = this.masterRolls.getAll();
-            const filteredMasterRolls = masterRolls.filter(roll => !testQRValues.includes(roll.qrValue));
-            writeCollection(DB.KEYS.MASTER_ROLLS, filteredMasterRolls);
+            const masterRollsSnapshot = await db.collection('masterRolls').where('qrValue', 'in', testQRValues).get();
+            const masterBatch = db.batch();
+            masterRollsSnapshot.forEach(doc => masterBatch.delete(doc.ref));
+            await masterBatch.commit();
             
             // Remove test child rolls
-            const childRolls = this.childRolls.getAll();
-            const filteredChildRolls = childRolls.filter(roll => !testQRValues.includes(roll.masterRollQR));
-            writeCollection(DB.KEYS.CHILD_ROLLS, filteredChildRolls);
+            const childRollsSnapshot = await db.collection('childRolls').where('masterRollQR', 'in', testQRValues).get();
+            const childBatch = db.batch();
+            childRollsSnapshot.forEach(doc => childBatch.delete(doc.ref));
+            await childBatch.commit();
             
             console.log('Test data cleared successfully');
             return true;
@@ -142,250 +88,309 @@ const DB = {
     // Master Roll Operations
     masterRolls: {
         // Get all master rolls
-        getAll() {
-            return readCollection(DB.KEYS.MASTER_ROLLS);
+        async getAll() {
+            try {
+                const db = DB._getDB();
+                const snapshot = await db.collection('masterRolls').get();
+                return snapshot.docs.map(doc => DB._docToObject(doc));
+            } catch (error) {
+                console.error('Error getting master rolls:', error);
+                return [];
+            }
         },
 
         // Get master roll by QR value
-        getByQR(qrValue) {
-            const rolls = DB.masterRolls.getAll();
-            return rolls.find(roll => roll.qrValue === qrValue);
+        async getByQR(qrValue) {
+            try {
+                const db = DB._getDB();
+                const snapshot = await db.collection('masterRolls').where('qrValue', '==', qrValue).limit(1).get();
+                if (snapshot.empty) return null;
+                return DB._docToObject(snapshot.docs[0]);
+            } catch (error) {
+                console.error('Error getting master roll by QR:', error);
+                return null;
+            }
         },
 
-        // Create a new master roll (Stage 1)
-        create(data) {
-            const rolls = DB.masterRolls.getAll();
-            const newRoll = {
-                id: Date.now().toString(),
-                qrValue: data.qrValue,
-                stockNumber: data.stockNumber,
-                lotNumber: data.lotNumber,
-                status: 'registered', // registered, slit
-                createdAt: new Date().toISOString(),
-                registeredAt: new Date().toISOString()
-            };
-            rolls.push(newRoll);
-            const success = writeCollection(DB.KEYS.MASTER_ROLLS, rolls);
-            if (!success) {
-                throw new Error('Failed to save master roll');
+        // Create a new master roll
+        async create(data) {
+            try {
+                const db = DB._getDB();
+                const newRoll = {
+                    qrValue: data.qrValue,
+                    stockNumber: data.stockNumber,
+                    lotNumber: data.lotNumber,
+                    status: 'registered',
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    registeredAt: firebase.firestore.FieldValue.serverTimestamp()
+                };
+                
+                const docRef = await db.collection('masterRolls').add(newRoll);
+                const saved = await docRef.get();
+                const savedData = DB._docToObject(saved);
+                
+                console.log('✓ Master roll created:', savedData);
+                return savedData;
+            } catch (error) {
+                console.error('Error creating master roll:', error);
+                throw new Error('Failed to save master roll: ' + error.message);
             }
-            
-            // Verify it was saved
-            const verify = DB.masterRolls.getByQR(data.qrValue);
-            if (!verify) {
-                console.error('Master roll save verification failed!');
-                throw new Error('Master roll was not saved correctly');
-            }
-            
-            console.log('✓ Master roll created and verified:', verify);
-            return newRoll;
         },
 
-        // Update master roll status to 'slit' (Stage 2)
-        markAsSlit(qrValue) {
-            const rolls = DB.masterRolls.getAll();
-            const roll = rolls.find(r => r.qrValue === qrValue);
-            if (roll) {
-                roll.status = 'slit';
-                roll.slitAt = new Date().toISOString();
-                const success = writeCollection(DB.KEYS.MASTER_ROLLS, rolls);
-                if (!success) {
-                    throw new Error('Failed to update master roll status');
+        // Update master roll status to 'slit'
+        async markAsSlit(qrValue) {
+            try {
+                const db = DB._getDB();
+                const snapshot = await db.collection('masterRolls').where('qrValue', '==', qrValue).limit(1).get();
+                
+                if (snapshot.empty) {
+                    throw new Error('Master roll not found');
                 }
                 
-                // Verify it was updated
-                const verify = DB.masterRolls.getByQR(qrValue);
-                if (!verify || verify.status !== 'slit') {
-                    console.error('Master roll update verification failed!');
-                    throw new Error('Master roll status was not updated correctly');
-                }
+                const docRef = snapshot.docs[0].ref;
+                await docRef.update({
+                    status: 'slit',
+                    slitAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
                 
-                console.log('✓ Master roll marked as slit and verified:', verify);
+                const updated = await docRef.get();
+                const updatedData = DB._docToObject(updated);
+                console.log('✓ Master roll marked as slit:', updatedData);
+                return updatedData;
+            } catch (error) {
+                console.error('Error updating master roll status:', error);
+                throw new Error('Failed to update master roll status: ' + error.message);
             }
-            return roll;
         },
 
-        // Update master roll (e.g., during registration)
-        update(qrValue, data) {
-            const rolls = DB.masterRolls.getAll();
-            const roll = rolls.find(r => r.qrValue === qrValue);
-            if (roll) {
-                Object.assign(roll, data);
-                writeCollection(DB.KEYS.MASTER_ROLLS, rolls);
+        // Update master roll
+        async update(qrValue, data) {
+            try {
+                const db = DB._getDB();
+                const snapshot = await db.collection('masterRolls').where('qrValue', '==', qrValue).limit(1).get();
+                
+                if (snapshot.empty) {
+                    return null;
+                }
+                
+                const docRef = snapshot.docs[0].ref;
+                await docRef.update(data);
+                
+                const updated = await docRef.get();
+                return DB._docToObject(updated);
+            } catch (error) {
+                console.error('Error updating master roll:', error);
+                return null;
             }
-            return roll;
         }
     },
 
     // Child Roll Operations
     childRolls: {
         // Get all child rolls
-        getAll() {
-            return readCollection(DB.KEYS.CHILD_ROLLS);
+        async getAll() {
+            try {
+                const db = DB._getDB();
+                const snapshot = await db.collection('childRolls').get();
+                return snapshot.docs.map(doc => DB._docToObject(doc));
+            } catch (error) {
+                console.error('Error getting child rolls:', error);
+                return [];
+            }
         },
 
         // Get child rolls by master roll QR value
-        getByMasterQR(qrValue) {
-            const rolls = DB.childRolls.getAll();
-            return rolls.filter(roll => roll.masterRollQR === qrValue);
-        },
-
-        // Get available child rolls (status = 'AVAILABLE')
-        getAvailableByMasterQR(qrValue) {
-            const rolls = DB.childRolls.getByMasterQR(qrValue);
-            return rolls.filter(roll => roll.status === 'AVAILABLE');
-        },
-
-        // Create child rolls (Stage 2)
-        createBatch(masterRollQR, widths, jobId = null) {
-            const rolls = DB.childRolls.getAll();
-            const timestamp = Date.now();
-            const newRolls = widths.map((width, index) => ({
-                id: `${timestamp}-${index}`,
-                masterRollQR: masterRollQR,
-                width: width,
-                status: 'AVAILABLE',
-                jobId: jobId || `job-${timestamp}`,
-                createdAt: new Date().toISOString()
-            }));
-            rolls.push(...newRolls);
-            const success = writeCollection(DB.KEYS.CHILD_ROLLS, rolls);
-            if (!success) {
-                throw new Error('Failed to save child rolls');
+        async getByMasterQR(qrValue) {
+            try {
+                const db = DB._getDB();
+                const snapshot = await db.collection('childRolls').where('masterRollQR', '==', qrValue).get();
+                return snapshot.docs.map(doc => DB._docToObject(doc));
+            } catch (error) {
+                console.error('Error getting child rolls by master QR:', error);
+                return [];
             }
-            
-            // Verify they were saved
-            const verify = DB.childRolls.getByMasterQR(masterRollQR);
-            if (verify.length < rolls.length) {
-                console.error('Child rolls save verification failed!', {
-                    expected: rolls.length,
-                    actual: verify.length
+        },
+
+        // Get available child rolls
+        async getAvailableByMasterQR(qrValue) {
+            try {
+                const db = DB._getDB();
+                const snapshot = await db.collection('childRolls')
+                    .where('masterRollQR', '==', qrValue)
+                    .where('status', '==', 'AVAILABLE')
+                    .get();
+                return snapshot.docs.map(doc => DB._docToObject(doc));
+            } catch (error) {
+                console.error('Error getting available child rolls:', error);
+                return [];
+            }
+        },
+
+        // Create child rolls batch
+        async createBatch(masterRollQR, widths, jobId = null) {
+            try {
+                const db = DB._getDB();
+                const batch = db.batch();
+                const timestamp = Date.now();
+                const newRolls = [];
+                
+                widths.forEach((width, index) => {
+                    const rollData = {
+                        masterRollQR: masterRollQR,
+                        width: width,
+                        status: 'AVAILABLE',
+                        jobId: jobId || `job-${timestamp}`,
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    };
+                    const docRef = db.collection('childRolls').doc(`${timestamp}-${index}`);
+                    batch.set(docRef, rollData);
+                    newRolls.push({ id: docRef.id, ...rollData });
                 });
-                throw new Error('Child rolls were not saved correctly');
+                
+                await batch.commit();
+                console.log(`✓ Created ${newRolls.length} child rolls`);
+                return newRolls;
+            } catch (error) {
+                console.error('Error creating child rolls:', error);
+                throw new Error('Failed to save child rolls: ' + error.message);
             }
-            
-            console.log(`✓ Created ${newRolls.length} child rolls and verified:`, newRolls);
-            return newRolls;
         },
 
-        // Mark a child roll as used (Stage 3)
-        markAsUsed(childRollId) {
-            const rolls = DB.childRolls.getAll();
-            const roll = rolls.find(r => r.id === childRollId);
-            if (roll) {
-                roll.status = 'USED';
-                roll.usedAt = new Date().toISOString();
-                writeCollection(DB.KEYS.CHILD_ROLLS, rolls);
+        // Mark a child roll as used
+        async markAsUsed(childRollId) {
+            try {
+                const db = DB._getDB();
+                const docRef = db.collection('childRolls').doc(childRollId);
+                await docRef.update({
+                    status: 'USED',
+                    usedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                
+                const updated = await docRef.get();
+                return DB._docToObject(updated);
+            } catch (error) {
+                console.error('Error marking child roll as used:', error);
+                return null;
             }
-            return roll;
         }
     },
 
     // QR Code Operations
     qrCodes: {
         // Get all QR codes
-        getAll() {
-            return readCollection(DB.KEYS.QR_CODES);
+        async getAll() {
+            try {
+                const db = DB._getDB();
+                const snapshot = await db.collection('qrCodes').get();
+                return snapshot.docs.map(doc => DB._docToObject(doc));
+            } catch (error) {
+                console.error('Error getting QR codes:', error);
+                return [];
+            }
         },
 
         // Get QR code by value
-        getByValue(qrValue) {
-            const codes = DB.qrCodes.getAll();
-            return codes.find(code => code.qrValue === qrValue);
+        async getByValue(qrValue) {
+            try {
+                const db = DB._getDB();
+                const snapshot = await db.collection('qrCodes').where('qrValue', '==', qrValue).limit(1).get();
+                if (snapshot.empty) return null;
+                return DB._docToObject(snapshot.docs[0]);
+            } catch (error) {
+                console.error('Error getting QR code by value:', error);
+                return null;
+            }
         },
 
-        // Create QR code record (when generated)
-        create(data) {
-            const codes = DB.qrCodes.getAll();
-            const newCode = {
-                qrValue: data.qrValue,
-                lotNumber: data.lotNumber,
-                stockNumber: data.stockNumber,
-                createdAt: new Date().toISOString()
-            };
-            codes.push(newCode);
-            const success = writeCollection(DB.KEYS.QR_CODES, codes);
-            if (!success) {
-                throw new Error('Failed to save QR code');
+        // Create QR code record
+        async create(data) {
+            try {
+                const db = DB._getDB();
+                const newCode = {
+                    qrValue: data.qrValue,
+                    lotNumber: data.lotNumber,
+                    stockNumber: data.stockNumber,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                };
+                
+                const docRef = await db.collection('qrCodes').add(newCode);
+                const saved = await docRef.get();
+                const savedData = DB._docToObject(saved);
+                
+                console.log('✓ QR code created:', savedData);
+                return savedData;
+            } catch (error) {
+                console.error('Error creating QR code:', error);
+                throw new Error('Failed to save QR code: ' + error.message);
             }
-            
-            // Verify it was saved
-            const verify = DB.qrCodes.getByValue(data.qrValue);
-            if (!verify) {
-                console.error('QR code save verification failed!');
-                throw new Error('QR code was not saved correctly');
-            }
-            
-            console.log('✓ QR code created and verified:', verify);
-            return newCode;
         }
     },
 
     // Scan Event Operations
     scanEvents: {
         // Get all scan events
-        getAll() {
-            return readCollection(DB.KEYS.SCAN_EVENTS);
+        async getAll() {
+            try {
+                const db = DB._getDB();
+                const snapshot = await db.collection('scanEvents').get();
+                return snapshot.docs.map(doc => DB._docToObject(doc));
+            } catch (error) {
+                console.error('Error getting scan events:', error);
+                return [];
+            }
         },
 
         // Create scan event
-        create(data) {
-            const events = DB.scanEvents.getAll();
-            const newEvent = {
-                id: Date.now().toString(),
-                qrValue: data.qrValue,
-                action: data.action, // 'registration', 'slitting', 'roll_selected'
-                childRollId: data.childRollId || null,
-                timestamp: new Date().toISOString(),
-                userAgent: navigator.userAgent
-            };
-            events.push(newEvent);
-            writeCollection(DB.KEYS.SCAN_EVENTS, events);
-            return newEvent;
+        async create(data) {
+            try {
+                const db = DB._getDB();
+                const newEvent = {
+                    qrValue: data.qrValue,
+                    action: data.action,
+                    childRollId: data.childRollId || null,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                    userAgent: navigator.userAgent
+                };
+                
+                const docRef = await db.collection('scanEvents').add(newEvent);
+                const saved = await docRef.get();
+                return DB._docToObject(saved);
+            } catch (error) {
+                console.error('Error creating scan event:', error);
+                return null;
+            }
         }
     },
 
     // Helper: Determine QR code stage
-    getQRStage(qrValue) {
-        const masterRoll = DB.masterRolls.getByQR(qrValue);
-        
-        if (!masterRoll) {
-            // QR code exists but master roll not registered yet
-            const qrCode = DB.qrCodes.getByValue(qrValue);
-            if (qrCode) {
-                return 'stage1'; // Needs registration
+    async getQRStage(qrValue) {
+        try {
+            const masterRoll = await DB.masterRolls.getByQR(qrValue);
+            
+            if (!masterRoll) {
+                const qrCode = await DB.qrCodes.getByValue(qrValue);
+                if (qrCode) {
+                    return 'stage1';
+                }
+                return 'not_found';
             }
-            return 'not_found'; // QR code doesn't exist
-        }
 
-        if (masterRoll.status === 'registered') {
-            // Check if child rolls exist
-            const childRolls = DB.childRolls.getByMasterQR(qrValue);
-            if (childRolls.length === 0) {
-                return 'stage2'; // Needs slitting
+            if (masterRoll.status === 'registered') {
+                const childRolls = await DB.childRolls.getByMasterQR(qrValue);
+                if (childRolls.length === 0) {
+                    return 'stage2';
+                }
             }
-        }
 
-        // Master roll is slit, check available rolls
-        const availableRolls = DB.childRolls.getAvailableByMasterQR(qrValue);
-        if (availableRolls.length === 0) {
-            return 'all_used'; // All rolls used
-        }
+            const availableRolls = await DB.childRolls.getAvailableByMasterQR(qrValue);
+            if (availableRolls.length === 0) {
+                return 'all_used';
+            }
 
-        return 'stage3'; // Can select from available rolls
+            return 'stage3';
+        } catch (error) {
+            console.error('Error getting QR stage:', error);
+            return 'not_found';
+        }
     }
 };
-
-// Initialize database on load
-if (typeof window !== 'undefined') {
-    // Always initialize immediately
-    DB.init();
-    
-    // Also initialize on DOM ready as backup
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => {
-            DB.init();
-        });
-    }
-}
-

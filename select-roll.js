@@ -2,7 +2,14 @@
 let qrValue = null;
 let availableRolls = [];
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
+    // Initialize database
+    try {
+        await DB.init();
+    } catch (error) {
+        console.error('Failed to initialize database:', error);
+    }
+    
     const urlParams = new URLSearchParams(window.location.search);
     qrValue = urlParams.get('qr');
 
@@ -12,7 +19,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Get master roll info
-    const masterRoll = DB.masterRolls.getByQR(qrValue);
+    const masterRoll = await DB.masterRolls.getByQR(qrValue);
     if (!masterRoll) {
         showError('Master roll not found. Please register the master roll first.');
         return;
@@ -28,11 +35,11 @@ document.addEventListener('DOMContentLoaded', function() {
     `;
 
     // Load available rolls
-    loadAvailableRolls();
+    await loadAvailableRolls();
 });
 
-function loadAvailableRolls() {
-    availableRolls = DB.childRolls.getAvailableByMasterQR(qrValue);
+async function loadAvailableRolls() {
+    availableRolls = await DB.childRolls.getAvailableByMasterQR(qrValue);
     const container = document.getElementById('rollsListContainer');
 
     if (availableRolls.length === 0) {
@@ -82,7 +89,7 @@ function loadAvailableRolls() {
     `;
 }
 
-function selectRoll(childRollId) {
+async function selectRoll(childRollId) {
     // Find the roll
     const roll = availableRolls.find(r => r.id === childRollId);
     if (!roll) {
@@ -95,34 +102,39 @@ function selectRoll(childRollId) {
         return;
     }
 
-    // Mark roll as used
-    DB.childRolls.markAsUsed(childRollId);
+    try {
+        // Mark roll as used
+        await DB.childRolls.markAsUsed(childRollId);
 
-    // Log scan event
-    DB.scanEvents.create({
-        qrValue: qrValue,
-        action: 'roll_selected',
-        childRollId: childRollId
-    });
+        // Log scan event
+        await DB.scanEvents.create({
+            qrValue: qrValue,
+            action: 'roll_selected',
+            childRollId: childRollId
+        });
 
-    // Show success message
-    const messageContainer = document.getElementById('messageContainer');
-    messageContainer.innerHTML = `
-        <div class="success-message">
-            <h3 style="margin-bottom: 12px;">Roll Marked as Used</h3>
-            <p><strong>Width:</strong> ${roll.width}mm</p>
-            <p><strong>Status:</strong> USED</p>
-            <p style="margin-top: 12px; font-size: 0.9rem;">
-                This roll has been marked as consumed and will no longer appear in the available list.
-            </p>
-        </div>
-    `;
+        // Show success message
+        const messageContainer = document.getElementById('messageContainer');
+        messageContainer.innerHTML = `
+            <div class="success-message">
+                <h3 style="margin-bottom: 12px;">Roll Marked as Used</h3>
+                <p><strong>Width:</strong> ${roll.width}mm</p>
+                <p><strong>Status:</strong> USED</p>
+                <p style="margin-top: 12px; font-size: 0.9rem;">
+                    This roll has been marked as consumed and will no longer appear in the available list.
+                </p>
+            </div>
+        `;
 
-    // Reload available rolls
-    setTimeout(() => {
-        loadAvailableRolls();
-        messageContainer.innerHTML = '';
-    }, 2000);
+        // Reload available rolls
+        setTimeout(async () => {
+            await loadAvailableRolls();
+            messageContainer.innerHTML = '';
+        }, 2000);
+    } catch (error) {
+        console.error('Error marking roll as used:', error);
+        showError('Failed to mark roll as used: ' + error.message);
+    }
 }
 
 function showError(message) {
