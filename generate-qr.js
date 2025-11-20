@@ -102,15 +102,12 @@ function generateQRCodes() {
         // Create QR value (lot-stock format)
         const qrValue = `${data.lotNumber}-${data.stockNumber}`;
         
-        // Get base URL - use current origin for production, relative for local
-        const baseUrl = window.location.origin || '';
-        const isProduction = baseUrl.includes('vercel.app') || baseUrl.includes('vercel.com');
+        // Get base URL - always use full URL for QR codes (needed for phone scanning)
+        const baseUrl = window.location.origin || 'http://localhost:8000';
+        const isLocalhost = baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1') || baseUrl.includes('192.168.');
         
-        // Create QR code data - encode as URL that routes to appropriate stage
-        // Use full URL for production, relative for local development
-        const qrData = isProduction 
-            ? `${baseUrl}/index.html?qr=${encodeURIComponent(qrValue)}&lot=${encodeURIComponent(data.lotNumber)}&stock=${encodeURIComponent(data.stockNumber)}`
-            : `index.html?qr=${encodeURIComponent(qrValue)}&lot=${encodeURIComponent(data.lotNumber)}&stock=${encodeURIComponent(data.stockNumber)}`;
+        // Create QR code data - always use full URL so it works when scanned from phone
+        const qrData = `${baseUrl}/index.html?qr=${encodeURIComponent(qrValue)}&lot=${encodeURIComponent(data.lotNumber)}&stock=${encodeURIComponent(data.stockNumber)}`;
         
         // Also create a JSON version for direct scanning (shows data in QR reader)
         const qrDataJSON = JSON.stringify({
@@ -166,17 +163,39 @@ function generateQRCodes() {
         });
     });
 
-        // Save to database
+        // Save to database with verification
+        console.log('Saving QR codes to database...', generatedQRCodes);
         generatedQRCodes.forEach(qr => {
             // Create QR code record in database (if not already exists)
             if (!DB.qrCodes.getByValue(qr.qrValue)) {
-                DB.qrCodes.create({
-                    qrValue: qr.qrValue,
-                    lotNumber: qr.lotNumber,
-                    stockNumber: qr.stockNumber
-                });
+                try {
+                    const saved = DB.qrCodes.create({
+                        qrValue: qr.qrValue,
+                        lotNumber: qr.lotNumber,
+                        stockNumber: qr.stockNumber
+                    });
+                    
+                    // Verify it was saved
+                    const verify = DB.qrCodes.getByValue(qr.qrValue);
+                    if (!verify) {
+                        console.error(`ERROR: QR code ${qr.qrValue} was not saved!`);
+                        alert(`ERROR: Failed to save QR code ${qr.qrValue}. Check console.`);
+                    } else {
+                        console.log(`✓ QR code ${qr.qrValue} saved and verified`);
+                    }
+                } catch (error) {
+                    console.error(`Error saving QR code ${qr.qrValue}:`, error);
+                    alert(`ERROR: Failed to save QR code ${qr.qrValue}. Check console.`);
+                }
+            } else {
+                console.log(`QR code ${qr.qrValue} already exists, skipping`);
             }
         });
+        
+        // Final verification
+        const allQRCodes = DB.qrCodes.getAll();
+        console.log(`Total QR codes in database: ${allQRCodes.length}`);
+        console.log('All QR codes:', allQRCodes);
 
     // Show step 3
     document.getElementById('step2').style.display = 'none';

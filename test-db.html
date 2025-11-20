@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Test - RBD App</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1 class="logo">Database Test & Debug</h1>
+            <p class="subtitle">Verify database operations are working</p>
+        </header>
+
+        <main class="main-content">
+            <div class="form-container">
+                <div id="testResults">
+                    <h3 style="color: var(--primary-blue); margin-bottom: 20px;">Database Status</h3>
+                    <div id="statusDisplay"></div>
+                </div>
+
+                <div style="margin-top: 30px;">
+                    <h3 style="color: var(--primary-blue); margin-bottom: 16px;">Test Operations</h3>
+                    <div class="button-group">
+                        <button class="btn btn-primary" onclick="testCreateQR()">Test: Create QR Code</button>
+                        <button class="btn btn-primary" onclick="testCreateMasterRoll()">Test: Create Master Roll</button>
+                        <button class="btn btn-primary" onclick="testCreateChildRolls()">Test: Create Child Rolls</button>
+                        <button class="btn btn-secondary" onclick="refreshStatus()">Refresh Status</button>
+                        <button class="btn btn-danger" onclick="clearDatabase()">Clear All Data</button>
+                    </div>
+                </div>
+
+                <div style="margin-top: 30px;">
+                    <h3 style="color: var(--primary-blue); margin-bottom: 16px;">Database Contents</h3>
+                    <div id="dataDisplay"></div>
+                </div>
+
+                <div class="button-group" style="margin-top: 30px;">
+                    <button type="button" class="btn btn-primary" onclick="navigateTo('index.html')">Return to Home</button>
+                </div>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <p>&copy; 2024 RBD Manufacturing</p>
+        </footer>
+    </div>
+
+    <script src="database.js"></script>
+    <script src="app.js"></script>
+    <script>
+        function refreshStatus() {
+            const statusDiv = document.getElementById('statusDisplay');
+            const dataDiv = document.getElementById('dataDisplay');
+            
+            try {
+                // Check storage type
+                const storageType = DB.storageType;
+                const snapshot = DB.getSnapshot();
+                
+                statusDiv.innerHTML = `
+                    <div class="success-message">
+                        <p><strong>Storage Type:</strong> ${storageType}</p>
+                        <p><strong>Master Rolls:</strong> ${snapshot.masterRolls.length}</p>
+                        <p><strong>Child Rolls:</strong> ${snapshot.childRolls.length}</p>
+                        <p><strong>QR Codes:</strong> ${snapshot.qrCodes.length}</p>
+                        <p><strong>Scan Events:</strong> ${snapshot.scanEvents.length}</p>
+                    </div>
+                `;
+                
+                // Display all data
+                dataDiv.innerHTML = `
+                    <div style="margin-bottom: 20px;">
+                        <h4>Master Rolls:</h4>
+                        <pre style="background: var(--gray-50); padding: 12px; border-radius: 8px; overflow-x: auto; font-size: 0.85rem;">${JSON.stringify(snapshot.masterRolls, null, 2)}</pre>
+                    </div>
+                    <div style="margin-bottom: 20px;">
+                        <h4>Child Rolls:</h4>
+                        <pre style="background: var(--gray-50); padding: 12px; border-radius: 8px; overflow-x: auto; font-size: 0.85rem;">${JSON.stringify(snapshot.childRolls, null, 2)}</pre>
+                    </div>
+                    <div style="margin-bottom: 20px;">
+                        <h4>QR Codes:</h4>
+                        <pre style="background: var(--gray-50); padding: 12px; border-radius: 8px; overflow-x: auto; font-size: 0.85rem;">${JSON.stringify(snapshot.qrCodes, null, 2)}</pre>
+                    </div>
+                `;
+            } catch (error) {
+                statusDiv.innerHTML = `
+                    <div class="error-message">
+                        <p><strong>Error:</strong> ${error.message}</p>
+                        <p>${error.stack}</p>
+                    </div>
+                `;
+            }
+        }
+
+        function testCreateQR() {
+            try {
+                const testQR = DB.qrCodes.create({
+                    qrValue: 'test-lot-test-stock',
+                    lotNumber: 'test-lot',
+                    stockNumber: 'test-stock'
+                });
+                alert('QR Code created successfully! Check status.');
+                refreshStatus();
+            } catch (error) {
+                alert('Error: ' + error.message);
+                console.error(error);
+            }
+        }
+
+        function testCreateMasterRoll() {
+            try {
+                const testRoll = DB.masterRolls.create({
+                    qrValue: 'test-lot-test-stock',
+                    lotNumber: 'test-lot',
+                    stockNumber: 'test-stock'
+                });
+                alert('Master Roll created successfully! Check status.');
+                refreshStatus();
+            } catch (error) {
+                alert('Error: ' + error.message);
+                console.error(error);
+            }
+        }
+
+        function testCreateChildRolls() {
+            try {
+                const testRolls = DB.childRolls.createBatch('test-lot-test-stock', [225, 241, 325], 'test-job-1');
+                alert(`Created ${testRolls.length} child rolls successfully! Check status.`);
+                refreshStatus();
+            } catch (error) {
+                alert('Error: ' + error.message);
+                console.error(error);
+            }
+        }
+
+        function clearDatabase() {
+            if (confirm('Are you sure you want to clear ALL database data? This cannot be undone.')) {
+                try {
+                    localStorage.clear();
+                    alert('Database cleared. Refreshing page...');
+                    location.reload();
+                } catch (error) {
+                    alert('Error: ' + error.message);
+                }
+            }
+        }
+
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', function() {
+            DB.init();
+            refreshStatus();
+        });
+    </script>
+</body>
+</html>
+

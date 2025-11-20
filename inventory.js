@@ -8,11 +8,19 @@ document.addEventListener('DOMContentLoaded', function() {
     if (typeof DB !== 'undefined') {
         DB.init();
         
-        // Seed test data if database is empty
-        const qrCodes = DB.qrCodes.getAll();
-        if (qrCodes.length === 0) {
-            DB.seedTestData();
+        // Clear test data if it exists (one-time cleanup)
+        if (typeof DB.clearTestData === 'function') {
+            DB.clearTestData();
         }
+        
+        // Log current database state for debugging
+        const snapshot = DB.getSnapshot();
+        console.log('=== INVENTORY PAGE LOADED ===');
+        console.log('Database snapshot:', snapshot);
+        console.log('Storage type:', DB.storageType);
+        console.log('Master Rolls:', snapshot.masterRolls);
+        console.log('Child Rolls:', snapshot.childRolls);
+        console.log('QR Codes:', snapshot.qrCodes);
     }
     
     // Small delay to ensure DB is ready
@@ -37,33 +45,39 @@ function displayStockGroups() {
     const container = document.getElementById('inventoryContainer');
     const masterRolls = DB.masterRolls.getAll();
     const qrCodes = DB.qrCodes.getAll();
+    const childRolls = DB.childRolls.getAll();
     
     // Debug: Log what we have
+    console.log('=== INVENTORY DEBUG ===');
     console.log('Master Rolls:', masterRolls);
     console.log('QR Codes:', qrCodes);
-    
-    // Create a map of all QR codes (including unregistered ones)
-    const allItems = {};
-    
-    // Add registered master rolls
-    masterRolls.forEach(roll => {
-        const key = `${roll.stockNumber}-${roll.lotNumber}`;
-        if (!allItems[key]) {
-            allItems[key] = {
-                stockNumber: roll.stockNumber,
-                lotNumber: roll.lotNumber,
-                qrValue: roll.qrValue,
-                status: roll.status,
-                registeredAt: roll.registeredAt,
-                slitAt: roll.slitAt,
-                isRegistered: true
-            };
-        }
+    console.log('Child Rolls:', childRolls);
+    console.log('Total counts:', {
+        masterRolls: masterRolls.length,
+        qrCodes: qrCodes.length,
+        childRolls: childRolls.length
     });
     
-    // Add unregistered QR codes
+    // Create a map of all items - use qrValue as unique key to avoid duplicates
+    const allItems = {};
+    
+    // Add registered master rolls (these take priority)
+    masterRolls.forEach(roll => {
+        const key = roll.qrValue; // Use qrValue as unique key
+        allItems[key] = {
+            stockNumber: roll.stockNumber,
+            lotNumber: roll.lotNumber,
+            qrValue: roll.qrValue,
+            status: roll.status,
+            registeredAt: roll.registeredAt,
+            slitAt: roll.slitAt,
+            isRegistered: true
+        };
+    });
+    
+    // Add unregistered QR codes (only if not already in allItems)
     qrCodes.forEach(qr => {
-        const key = `${qr.stockNumber}-${qr.lotNumber}`;
+        const key = qr.qrValue;
         if (!allItems[key]) {
             allItems[key] = {
                 stockNumber: qr.stockNumber,
@@ -77,6 +91,7 @@ function displayStockGroups() {
     });
     
     const allItemsArray = Object.values(allItems);
+    console.log('All items array:', allItemsArray);
     
     if (allItemsArray.length === 0) {
         container.innerHTML = `
@@ -88,14 +103,17 @@ function displayStockGroups() {
         return;
     }
 
-    // Group by stock number
+    // Group by stock number (normalize stock numbers - trim whitespace)
     const stockGroups = {};
     allItemsArray.forEach(item => {
-        if (!stockGroups[item.stockNumber]) {
-            stockGroups[item.stockNumber] = [];
+        const normalizedStock = String(item.stockNumber).trim();
+        if (!stockGroups[normalizedStock]) {
+            stockGroups[normalizedStock] = [];
         }
-        stockGroups[item.stockNumber].push(item);
+        stockGroups[normalizedStock].push(item);
     });
+    
+    console.log('Stock groups:', stockGroups);
 
     // Sort stock numbers
     const stockNumbers = Object.keys(stockGroups).sort();
@@ -110,7 +128,13 @@ function displayStockGroups() {
                 const lots = stockGroups[stockNumber];
                 const totalLots = lots.length;
                 const registeredCount = lots.filter(r => r.isRegistered && r.status === 'registered').length;
-                const slitCount = lots.filter(r => r.isRegistered && r.status === 'slit').length;
+                // Count as "slit" if status is 'slit' OR has child rolls
+                const slitCount = lots.filter(r => {
+                    if (!r.isRegistered) return false;
+                    if (r.status === 'slit') return true;
+                    const childRolls = DB.childRolls.getByMasterQR(r.qrValue);
+                    return childRolls.length > 0;
+                }).length;
                 const unregisteredCount = lots.filter(r => !r.isRegistered).length;
                 
                 return `
@@ -232,8 +256,17 @@ function displayLotsForStock(stockNumber) {
                 const childRolls = DB.childRolls.getByMasterQR(roll.qrValue);
                 const availableRolls = childRolls.filter(r => r.status === 'AVAILABLE').length;
                 const usedRolls = childRolls.filter(r => r.status === 'USED').length;
-                const isSlit = roll.status === 'slit';
+                // Check if it's slit - either status is 'slit' OR has child rolls
+                const isSlit = roll.status === 'slit' || childRolls.length > 0;
                 const isUnregistered = !roll.isRegistered;
+                
+                // Debug log for each lot
+                console.log(`Lot ${roll.lotNumber}:`, {
+                    qrValue: roll.qrValue,
+                    status: roll.status,
+                    childRollsCount: childRolls.length,
+                    isSlit: isSlit
+                });
                 
                 return `
                     <div class="lot-card" onclick="selectLot('${stockNumber}', '${roll.lotNumber}')">
@@ -440,7 +473,7 @@ function displayLotDetails(stockNumber, lotNumber) {
             </div>
         </div>
 
-        ${masterRoll.status === 'slit' ? `
+        ${(masterRoll.status === 'slit' || childRolls.length > 0) ? `
             <div class="details-section">
                 <h4 class="details-section-title">Slitting Information</h4>
                 <div class="details-grid">
@@ -563,20 +596,20 @@ function goBackToLots() {
 }
 
 function refreshInventory() {
+    // Force reload from database
+    console.log('Refreshing inventory...');
+    const snapshot = DB.getSnapshot();
+    console.log('Current database state:', snapshot);
+    console.log('Master Rolls count:', snapshot.masterRolls.length);
+    console.log('QR Codes count:', snapshot.qrCodes.length);
+    console.log('Child Rolls count:', snapshot.childRolls.length);
+    
+    // Reset to stocks view
+    currentView = 'stocks';
+    selectedStockNumber = null;
+    selectedLotNumber = null;
+    
     loadInventory();
 }
 
-function seedTestData() {
-    if (typeof DB !== 'undefined' && DB.seedTestData) {
-        const result = DB.seedTestData();
-        if (result) {
-            alert('Test data loaded successfully!');
-            loadInventory();
-        } else {
-            alert('Error loading test data. Check console for details.');
-        }
-    } else {
-        alert('Database not available. Please refresh the page.');
-    }
-}
 

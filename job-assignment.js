@@ -3,6 +3,8 @@ let numberOfRolls = 0;
 let rolls = [];
 let currentRollIndex = 0;
 let qrValue = null; // Store QR value from URL
+let jobNumber = null; // Store job number
+let masterRoll = null; // Store master roll data
 
 const PRESET_SIZES = [225, 241, 325];
 const MAX_TOTAL_SIZE = 1300;
@@ -14,23 +16,39 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (qrValue) {
         // Verify master roll exists and is in correct stage
-        const masterRoll = DB.masterRolls.getByQR(qrValue);
+        masterRoll = DB.masterRolls.getByQR(qrValue);
         
         if (!masterRoll) {
-            // Show warning but allow manual entry for testing
-            const messageContainer = document.createElement('div');
-            messageContainer.id = 'qrWarningContainer';
-            messageContainer.style.marginBottom = '20px';
-            messageContainer.innerHTML = `
-                <div class="error-message" style="margin-bottom: 0;">
-                    <p><strong>Warning:</strong> Master roll not found for QR: ${qrValue}</p>
-                    <p style="margin-top: 8px; font-size: 0.9rem;">You can still proceed manually, but the master roll will need to be registered first.</p>
-                </div>
-            `;
-            document.querySelector('.form-container').insertBefore(messageContainer, document.querySelector('#step1'));
+            // Check if QR code exists in database
+            const qrCode = DB.qrCodes.getByValue(qrValue);
+            if (qrCode) {
+                // Auto-fill lot and stock from QR code
+                document.getElementById('lotNumber').value = qrCode.lotNumber || '';
+                document.getElementById('stockNumber').value = qrCode.stockNumber || '';
+                
+                // Show warning
+                const messageContainer = document.createElement('div');
+                messageContainer.id = 'qrWarningContainer';
+                messageContainer.style.marginBottom = '20px';
+                messageContainer.innerHTML = `
+                    <div class="error-message" style="margin-bottom: 0;">
+                        <p><strong>Warning:</strong> Master roll not found for QR: ${qrValue}</p>
+                        <p style="margin-top: 8px; font-size: 0.9rem;">Please register this master roll first before assigning a job.</p>
+                    </div>
+                `;
+                document.querySelector('.form-container').insertBefore(messageContainer, document.querySelector('#step0'));
+            } else {
+                alert('QR code not found in database. Please generate this QR code first.');
+                navigateTo('index.html');
+                return;
+            }
         } else {
+            // Master roll exists - auto-fill lot and stock
+            document.getElementById('lotNumber').value = masterRoll.lotNumber || '';
+            document.getElementById('stockNumber').value = masterRoll.stockNumber || '';
+            
+            // Check if already slit
             if (masterRoll.status !== 'registered') {
-                // Check if already slit
                 const childRolls = DB.childRolls.getByMasterQR(qrValue);
                 if (childRolls.length > 0) {
                     alert('This master roll has already been slit. Redirecting to roll selection...');
@@ -46,13 +64,28 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     } else {
-        // No QR code - allow manual entry (for testing)
-        const header = document.querySelector('.header .subtitle');
-        if (header) {
-            header.innerHTML = `Split master roll into production rolls<br><small style="font-size: 0.85rem; color: var(--gray-600);">Manual Entry Mode (for testing)</small>`;
-        }
+        // No QR code - show error
+        alert('QR code is required. Please scan a QR code first.');
+        navigateTo('index.html');
+        return;
     }
 });
+
+function proceedToNumberOfRolls() {
+    const jobInput = document.getElementById('jobNumber');
+    const jobValue = jobInput.value.trim();
+
+    if (!jobValue) {
+        alert('Please enter a job number');
+        return;
+    }
+
+    jobNumber = jobValue;
+
+    // Hide step 0, show step 1
+    document.getElementById('step0').style.display = 'none';
+    document.getElementById('step1').style.display = 'block';
+}
 
 function proceedToRollSizes() {
     const input = document.getElementById('numberOfRolls');
@@ -241,6 +274,12 @@ function editRoll(rollIndex) {
     validateTotal();
 }
 
+function goBackToJobNumber() {
+    document.getElementById('step1').style.display = 'none';
+    document.getElementById('step0').style.display = 'block';
+    jobNumber = null;
+}
+
 function goBackToStep1() {
     document.getElementById('step2').style.display = 'none';
     document.getElementById('step1').style.display = 'block';
@@ -262,57 +301,23 @@ function submitJobAssignment() {
         return;
     }
 
-    // Get QR value (use from URL or allow manual creation for testing)
-    let finalQRValue = qrValue;
-    let masterRoll = null;
+    // Validate job number
+    if (!jobNumber) {
+        alert('Job number is required. Please go back and enter a job number.');
+        return;
+    }
+
+    // QR code is required - verify it exists
+    if (!qrValue) {
+        alert('QR code is required. Please scan a QR code first.');
+        navigateTo('index.html');
+        return;
+    }
+
+    const finalQRValue = qrValue;
     
-    // If no QR value, allow manual entry for testing
-    if (!finalQRValue) {
-        const stockNumber = prompt('Enter Stock Number (for testing):');
-        const lotNumber = prompt('Enter Lot Number (for testing):');
-        
-        if (!stockNumber || !lotNumber) {
-            alert('Stock and Lot numbers are required for manual entry.');
-            return;
-        }
-        
-        // Normalize the values (trim whitespace)
-        const normalizedStock = stockNumber.trim();
-        const normalizedLot = lotNumber.trim();
-        finalQRValue = `${normalizedLot}-${normalizedStock}`;
-        
-        // First, check if a QR code exists with matching stock/lot (might be in different order)
-        const existingQR = DB.qrCodes.getAll().find(qr => 
-            (qr.stockNumber === normalizedStock && qr.lotNumber === normalizedLot) ||
-            (qr.stockNumber === normalizedLot && qr.lotNumber === normalizedStock) // Handle reverse
-        );
-        
-        // Use existing QR value if found, otherwise use the format we created
-        if (existingQR) {
-            finalQRValue = existingQR.qrValue;
-        }
-        
-        // Check if master roll exists, if not create it for testing
-        masterRoll = DB.masterRolls.getByQR(finalQRValue);
-        if (!masterRoll) {
-            // Create master roll for testing
-            masterRoll = DB.masterRolls.create({
-                qrValue: finalQRValue,
-                stockNumber: normalizedStock,
-                lotNumber: normalizedLot
-            });
-            
-            // Also create QR code record if it doesn't exist
-            if (!DB.qrCodes.getByValue(finalQRValue) && !existingQR) {
-                DB.qrCodes.create({
-                    qrValue: finalQRValue,
-                    lotNumber: normalizedLot,
-                    stockNumber: normalizedStock
-                });
-            }
-        }
-    } else {
-        // Verify master roll exists
+    // Verify master roll exists
+    if (!masterRoll) {
         masterRoll = DB.masterRolls.getByQR(finalQRValue);
         if (!masterRoll) {
             // Check if QR code exists - if so, auto-create master roll
@@ -326,6 +331,7 @@ function submitJobAssignment() {
                 });
             } else {
                 alert('Master roll not found. Please register the master roll first.');
+                navigateTo('index.html');
                 return;
             }
         }
@@ -334,8 +340,8 @@ function submitJobAssignment() {
     // Extract widths from rolls
     const widths = rolls.map(roll => roll.size);
 
-    // Create job ID for this slitting operation
-    const jobId = `job-${Date.now()}`;
+    // Use the entered job number as job ID
+    const jobId = jobNumber || `job-${Date.now()}`;
 
     // Create child rolls (Stage 2) with job ID
     const childRolls = DB.childRolls.createBatch(finalQRValue, widths, jobId);
@@ -350,17 +356,52 @@ function submitJobAssignment() {
         childRollId: null
     });
     
-    // Debug: Log what was created
-    console.log('Job Assignment completed:', {
+    // Debug: Log what was created and verify
+    console.log('Job Assignment - Saving data...', {
         qrValue: finalQRValue,
-        masterRoll: DB.masterRolls.getByQR(finalQRValue),
-        childRolls: DB.childRolls.getByMasterQR(finalQRValue)
+        widths: widths,
+        numberOfRolls: widths.length
     });
+    
+    // Verify data was actually saved
+    const verifyMasterRoll = DB.masterRolls.getByQR(finalQRValue);
+    const verifyChildRolls = DB.childRolls.getByMasterQR(finalQRValue);
+    
+    console.log('Job Assignment - Verification:', {
+        masterRoll: verifyMasterRoll,
+        childRollsCount: verifyChildRolls.length,
+        expectedCount: widths.length,
+        childRolls: verifyChildRolls
+    });
+    
+    if (!verifyMasterRoll) {
+        console.error('ERROR: Master roll was not saved!');
+        alert('ERROR: Failed to save master roll. Check console for details.');
+        return;
+    }
+    
+    if (verifyMasterRoll.status !== 'slit') {
+        console.error('ERROR: Master roll status was not updated to "slit"!');
+        alert('ERROR: Master roll status update failed. Check console for details.');
+        return;
+    }
+    
+    if (verifyChildRolls.length !== widths.length) {
+        console.error('ERROR: Child rolls count mismatch!', {
+            expected: widths.length,
+            actual: verifyChildRolls.length
+        });
+        alert(`ERROR: Only ${verifyChildRolls.length} of ${widths.length} child rolls were saved. Check console for details.`);
+        return;
+    }
+    
+    console.log('✓ Verification passed - All data saved successfully');
 
-    // Show success message
+    // Show success message with verification
     const totalSize = widths.reduce((sum, width) => sum + width, 0);
     const updatedMasterRoll = DB.masterRolls.getByQR(finalQRValue);
     document.getElementById('successDetails').innerHTML = `
+        <p><strong>Job Number:</strong> ${jobNumber}</p>
         <p><strong>Master Roll:</strong> ${finalQRValue}</p>
         <p><strong>Stock Number:</strong> ${updatedMasterRoll.stockNumber}</p>
         <p><strong>Lot Number:</strong> ${updatedMasterRoll.lotNumber}</p>
@@ -373,19 +414,27 @@ function submitJobAssignment() {
         <p style="margin-top: 12px; font-size: 0.9rem; color: var(--gray-600);">
             ✓ Data saved to database. You can view this in Inventory.
         </p>
+        <p style="margin-top: 8px; font-size: 0.9rem; color: var(--success-green); font-weight: 600;">
+            ✓ Verified: ${verifyChildRolls.length} child rolls saved | Master roll status: ${verifyMasterRoll.status}
+        </p>
     `;
 
     document.getElementById('step2').style.display = 'none';
     document.getElementById('step3').style.display = 'block';
+    
+    // Log final state for debugging
+    console.log('Final database state:', DB.getSnapshot());
 }
 
 function createNewAssignment() {
     // Reset everything
     document.getElementById('step3').style.display = 'none';
-    document.getElementById('step1').style.display = 'block';
+    document.getElementById('step0').style.display = 'block';
+    document.getElementById('jobNumber').value = '';
     document.getElementById('numberOfRolls').value = '';
     rolls = [];
     numberOfRolls = 0;
     currentRollIndex = 0;
+    jobNumber = null;
 }
 

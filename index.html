@@ -38,6 +38,7 @@
                     <h2>Inventory</h2>
                     <p>View all master rolls grouped by stock number</p>
                 </div>
+
             </div>
         </main>
 
@@ -54,12 +55,6 @@
             // Ensure database is initialized
             if (typeof DB !== 'undefined') {
                 DB.init();
-                
-                // Seed test data if database is empty
-                const qrCodes = DB.qrCodes.getAll();
-                if (qrCodes.length === 0) {
-                    DB.seedTestData();
-                }
             }
             const urlParams = new URLSearchParams(window.location.search);
             const qrValue = urlParams.get('qr');
@@ -70,36 +65,32 @@
                 // Construct QR value from parameters
                 const finalQRValue = qrValue || `${lot}-${stock}`;
                 
-                // Determine stage and route accordingly
-                const stage = DB.getQRStage(finalQRValue);
+                // First, verify QR code exists in database
+                const qrCodeInDB = DB.qrCodes.getByValue(finalQRValue);
                 
-                if (stage === 'stage1') {
-                    // Route to Master Roll Registration
-                    window.location.href = `master-roll.html?qr=${encodeURIComponent(finalQRValue)}&lot=${encodeURIComponent(lot || '')}&stock=${encodeURIComponent(stock || '')}`;
-                } else if (stage === 'stage2') {
-                    // Route to Job Assignment
-                    window.location.href = `job-assignment.html?qr=${encodeURIComponent(finalQRValue)}`;
-                } else if (stage === 'stage3') {
-                    // Route to Select Roll
-                    window.location.href = `select-roll.html?qr=${encodeURIComponent(finalQRValue)}`;
-                } else if (stage === 'all_used') {
-                    // Show message that all rolls are used
+                if (!qrCodeInDB) {
+                    // QR code not found in database - show error
                     document.querySelector('.main-content').innerHTML = `
                         <div class="form-container">
                             <div class="error-message">
-                                <h3>All Rolls Used</h3>
-                                <p>All rolls from this master roll have already been used.</p>
+                                <h3>QR Code Not Found</h3>
+                                <p>The scanned QR code was not found in the database.</p>
                                 <p style="margin-top: 12px;"><strong>QR Code:</strong> ${finalQRValue}</p>
+                                <p style="margin-top: 12px; font-size: 0.9rem;">Please generate this QR code first using the "Generate QR Codes" option.</p>
                             </div>
                             <div class="button-group" style="margin-top: 20px;">
                                 <button class="btn btn-primary" onclick="navigateTo('index.html')">Return to Home</button>
                             </div>
                         </div>
                     `;
-                } else {
-                    // QR code not found, show options
-                    // Keep default landing page
+                    return;
                 }
+                
+                // QR code found in database - verify and route to Master Roll Registration
+                console.log('QR Code verified in database:', qrCodeInDB);
+                
+                // Route to Master Roll Registration to mark as "received"
+                window.location.href = `master-roll.html?qr=${encodeURIComponent(finalQRValue)}&lot=${encodeURIComponent(qrCodeInDB.lotNumber || lot || '')}&stock=${encodeURIComponent(qrCodeInDB.stockNumber || stock || '')}`;
             }
         });
     </script>

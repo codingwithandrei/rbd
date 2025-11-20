@@ -15,7 +15,50 @@
 
         <main class="main-content">
             <div class="form-container">
-                <div id="step1" class="step">
+                <div id="step0" class="step">
+                    <h3 class="form-title" style="font-size: 1.5rem; margin-bottom: 20px;">Job Information</h3>
+                    
+                    <div class="form-group">
+                        <label for="jobNumber" class="form-label">Job Number *</label>
+                        <input 
+                            type="text" 
+                            id="jobNumber" 
+                            name="jobNumber" 
+                            class="form-input" 
+                            placeholder="Enter job number"
+                            required
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Lot Number</label>
+                        <input 
+                            type="text" 
+                            id="lotNumber" 
+                            class="form-input" 
+                            readonly
+                            style="background-color: var(--gray-100); cursor: not-allowed;"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Stock Number</label>
+                        <input 
+                            type="text" 
+                            id="stockNumber" 
+                            class="form-input" 
+                            readonly
+                            style="background-color: var(--gray-100); cursor: not-allowed;"
+                        >
+                    </div>
+
+                    <div class="button-group">
+                        <button type="button" class="btn btn-secondary" onclick="navigateTo('index.html')">Back</button>
+                        <button type="button" class="btn btn-primary" onclick="proceedToNumberOfRolls()">Next</button>
+                    </div>
+                </div>
+
+                <div id="step1" class="step" style="display: none;">
                     <div class="form-group">
                         <label for="numberOfRolls" class="form-label">Number of Rolls</label>
                         <input 
@@ -30,7 +73,7 @@
                     </div>
 
                     <div class="button-group">
-                        <button type="button" class="btn btn-secondary" onclick="navigateTo('index.html')">Back</button>
+                        <button type="button" class="btn btn-secondary" onclick="goBackToJobNumber()">Back</button>
                         <button type="button" class="btn btn-primary" onclick="proceedToRollSizes()">Next</button>
                     </div>
                 </div>

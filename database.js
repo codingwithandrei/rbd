@@ -1,7 +1,87 @@
 // Local Database Management
-// This file handles all database operations using localStorage
+// This file handles all database operations using localStorage when available.
+// If localStorage is blocked (e.g., running from the filesystem or private mode),
+// it falls back to an in-memory store so the app keeps working.
+
+const storageProvider = (() => {
+    const memoryStore = {};
+    const hasLocalStorage = (() => {
+        try {
+            const testKey = '__db_test__';
+            window.localStorage.setItem(testKey, 'test');
+            window.localStorage.removeItem(testKey);
+            return true;
+        } catch (error) {
+            console.warn('localStorage unavailable, falling back to in-memory store:', error);
+            return false;
+        }
+    })();
+
+    if (hasLocalStorage) {
+        return {
+            type: 'localStorage',
+            getItem: key => window.localStorage.getItem(key),
+            setItem: (key, value) => window.localStorage.setItem(key, value),
+            removeItem: key => window.localStorage.removeItem(key)
+        };
+    }
+
+    return {
+        type: 'memory',
+        getItem: key => Object.prototype.hasOwnProperty.call(memoryStore, key) ? memoryStore[key] : null,
+        setItem: (key, value) => {
+            memoryStore[key] = value;
+        },
+        removeItem: key => {
+            delete memoryStore[key];
+        }
+    };
+})();
+
+function readCollection(key) {
+    try {
+        const raw = storageProvider.getItem(key);
+        if (!raw) {
+            return [];
+        }
+        return JSON.parse(raw);
+    } catch (error) {
+        console.error(`Error reading collection "${key}":`, error);
+        return [];
+    }
+}
+
+function writeCollection(key, data) {
+    try {
+        const jsonString = JSON.stringify(data);
+        storageProvider.setItem(key, jsonString);
+        
+        // Verify the write worked
+        const verify = storageProvider.getItem(key);
+        if (verify !== jsonString) {
+            throw new Error(`Write verification failed for "${key}"`);
+        }
+        
+        console.log(`✓ Successfully wrote ${data.length} items to "${key}"`);
+        return true;
+    } catch (error) {
+        console.error(`✗ Error writing collection "${key}":`, error);
+        alert(`Database Error: Failed to save ${key}. Check console for details.`);
+        return false;
+    }
+}
 
 const DB = {
+    storageType: storageProvider.type,
+    getSnapshot() {
+        return {
+            storageType: DB.storageType,
+            masterRolls: DB.masterRolls.getAll(),
+            childRolls: DB.childRolls.getAll(),
+            qrCodes: DB.qrCodes.getAll(),
+            scanEvents: DB.scanEvents.getAll()
+        };
+    },
     // Database keys
     KEYS: {
         MASTER_ROLLS: 'masterRolls',
@@ -13,61 +93,48 @@ const DB = {
     // Initialize database structure
     init() {
         try {
-            if (!localStorage.getItem(this.KEYS.MASTER_ROLLS)) {
-                localStorage.setItem(this.KEYS.MASTER_ROLLS, JSON.stringify([]));
+            if (!storageProvider.getItem(this.KEYS.MASTER_ROLLS)) {
+                writeCollection(this.KEYS.MASTER_ROLLS, []);
             }
-            if (!localStorage.getItem(this.KEYS.CHILD_ROLLS)) {
-                localStorage.setItem(this.KEYS.CHILD_ROLLS, JSON.stringify([]));
+            if (!storageProvider.getItem(this.KEYS.CHILD_ROLLS)) {
+                writeCollection(this.KEYS.CHILD_ROLLS, []);
             }
-            if (!localStorage.getItem(this.KEYS.QR_CODES)) {
-                localStorage.setItem(this.KEYS.QR_CODES, JSON.stringify([]));
+            if (!storageProvider.getItem(this.KEYS.QR_CODES)) {
+                writeCollection(this.KEYS.QR_CODES, []);
             }
-            if (!localStorage.getItem(this.KEYS.SCAN_EVENTS)) {
-                localStorage.setItem(this.KEYS.SCAN_EVENTS, JSON.stringify([]));
+            if (!storageProvider.getItem(this.KEYS.SCAN_EVENTS)) {
+                writeCollection(this.KEYS.SCAN_EVENTS, []);
             }
-            console.log('Database initialized successfully');
+            console.log(`Database initialized using ${DB.storageType}`);
         } catch (error) {
             console.error('Database initialization error:', error);
         }
     },
 
-    // Seed database with test data
-    seedTestData() {
+    // Clear test data (removes pre-entered test entries)
+    clearTestData() {
         try {
-            const testData = [
-                { stockNumber: '1234', lotNumber: '123' },
-                { stockNumber: '1234', lotNumber: 'abc' },
-                { stockNumber: '4321', lotNumber: '12ab' }
-            ];
-
-            testData.forEach(data => {
-                const qrValue = `${data.lotNumber}-${data.stockNumber}`;
-                
-                // Create QR code if it doesn't exist
-                if (!this.qrCodes.getByValue(qrValue)) {
-                    this.qrCodes.create({
-                        qrValue: qrValue,
-                        lotNumber: data.lotNumber,
-                        stockNumber: data.stockNumber
-                    });
-                    console.log(`Created QR code: ${qrValue}`);
-                }
-
-                // Create master roll if it doesn't exist
-                if (!this.masterRolls.getByQR(qrValue)) {
-                    this.masterRolls.create({
-                        qrValue: qrValue,
-                        stockNumber: data.stockNumber,
-                        lotNumber: data.lotNumber
-                    });
-                    console.log(`Created master roll: ${qrValue}`);
-                }
-            });
-
-            console.log('Test data seeded successfully');
+            const testQRValues = ['123-1234', 'abc-1234', '12ab-4321'];
+            
+            // Remove test QR codes
+            const qrCodes = this.qrCodes.getAll();
+            const filteredQRCodes = qrCodes.filter(qr => !testQRValues.includes(qr.qrValue));
+            writeCollection(DB.KEYS.QR_CODES, filteredQRCodes);
+            
+            // Remove test master rolls
+            const masterRolls = this.masterRolls.getAll();
+            const filteredMasterRolls = masterRolls.filter(roll => !testQRValues.includes(roll.qrValue));
+            writeCollection(DB.KEYS.MASTER_ROLLS, filteredMasterRolls);
+            
+            // Remove test child rolls
+            const childRolls = this.childRolls.getAll();
+            const filteredChildRolls = childRolls.filter(roll => !testQRValues.includes(roll.masterRollQR));
+            writeCollection(DB.KEYS.CHILD_ROLLS, filteredChildRolls);
+            
+            console.log('Test data cleared successfully');
             return true;
         } catch (error) {
-            console.error('Error seeding test data:', error);
+            console.error('Error clearing test data:', error);
             return false;
         }
     },
@@ -76,16 +143,7 @@ const DB = {
     masterRolls: {
         // Get all master rolls
         getAll() {
-            try {
-                const data = localStorage.getItem(DB.KEYS.MASTER_ROLLS);
-                if (!data) {
-                    return [];
-                }
-                return JSON.parse(data);
-            } catch (error) {
-                console.error('Error getting master rolls:', error);
-                return [];
-            }
+            return readCollection(DB.KEYS.MASTER_ROLLS);
         },
 
         // Get master roll by QR value
@@ -107,7 +165,19 @@ const DB = {
                 registeredAt: new Date().toISOString()
             };
             rolls.push(newRoll);
-            localStorage.setItem(DB.KEYS.MASTER_ROLLS, JSON.stringify(rolls));
+            const success = writeCollection(DB.KEYS.MASTER_ROLLS, rolls);
+            if (!success) {
+                throw new Error('Failed to save master roll');
+            }
+            
+            // Verify it was saved
+            const verify = DB.masterRolls.getByQR(data.qrValue);
+            if (!verify) {
+                console.error('Master roll save verification failed!');
+                throw new Error('Master roll was not saved correctly');
+            }
+            
+            console.log('✓ Master roll created and verified:', verify);
             return newRoll;
         },
 
@@ -118,7 +188,19 @@ const DB = {
             if (roll) {
                 roll.status = 'slit';
                 roll.slitAt = new Date().toISOString();
-                localStorage.setItem(DB.KEYS.MASTER_ROLLS, JSON.stringify(rolls));
+                const success = writeCollection(DB.KEYS.MASTER_ROLLS, rolls);
+                if (!success) {
+                    throw new Error('Failed to update master roll status');
+                }
+                
+                // Verify it was updated
+                const verify = DB.masterRolls.getByQR(qrValue);
+                if (!verify || verify.status !== 'slit') {
+                    console.error('Master roll update verification failed!');
+                    throw new Error('Master roll status was not updated correctly');
+                }
+                
+                console.log('✓ Master roll marked as slit and verified:', verify);
             }
             return roll;
         },
@@ -129,7 +211,7 @@ const DB = {
             const roll = rolls.find(r => r.qrValue === qrValue);
             if (roll) {
                 Object.assign(roll, data);
-                localStorage.setItem(DB.KEYS.MASTER_ROLLS, JSON.stringify(rolls));
+                writeCollection(DB.KEYS.MASTER_ROLLS, rolls);
             }
             return roll;
         }
@@ -139,16 +221,7 @@ const DB = {
     childRolls: {
         // Get all child rolls
         getAll() {
-            try {
-                const data = localStorage.getItem(DB.KEYS.CHILD_ROLLS);
-                if (!data) {
-                    return [];
-                }
-                return JSON.parse(data);
-            } catch (error) {
-                console.error('Error getting child rolls:', error);
-                return [];
-            }
+            return readCollection(DB.KEYS.CHILD_ROLLS);
         },
 
         // Get child rolls by master roll QR value
@@ -176,7 +249,22 @@ const DB = {
                 createdAt: new Date().toISOString()
             }));
             rolls.push(...newRolls);
-            localStorage.setItem(DB.KEYS.CHILD_ROLLS, JSON.stringify(rolls));
+            const success = writeCollection(DB.KEYS.CHILD_ROLLS, rolls);
+            if (!success) {
+                throw new Error('Failed to save child rolls');
+            }
+            
+            // Verify they were saved
+            const verify = DB.childRolls.getByMasterQR(masterRollQR);
+            if (verify.length < rolls.length) {
+                console.error('Child rolls save verification failed!', {
+                    expected: rolls.length,
+                    actual: verify.length
+                });
+                throw new Error('Child rolls were not saved correctly');
+            }
+            
+            console.log(`✓ Created ${newRolls.length} child rolls and verified:`, newRolls);
             return newRolls;
         },
 
@@ -187,7 +275,7 @@ const DB = {
             if (roll) {
                 roll.status = 'USED';
                 roll.usedAt = new Date().toISOString();
-                localStorage.setItem(DB.KEYS.CHILD_ROLLS, JSON.stringify(rolls));
+                writeCollection(DB.KEYS.CHILD_ROLLS, rolls);
             }
             return roll;
         }
@@ -197,16 +285,7 @@ const DB = {
     qrCodes: {
         // Get all QR codes
         getAll() {
-            try {
-                const data = localStorage.getItem(DB.KEYS.QR_CODES);
-                if (!data) {
-                    return [];
-                }
-                return JSON.parse(data);
-            } catch (error) {
-                console.error('Error getting QR codes:', error);
-                return [];
-            }
+            return readCollection(DB.KEYS.QR_CODES);
         },
 
         // Get QR code by value
@@ -225,7 +304,19 @@ const DB = {
                 createdAt: new Date().toISOString()
             };
             codes.push(newCode);
-            localStorage.setItem(DB.KEYS.QR_CODES, JSON.stringify(codes));
+            const success = writeCollection(DB.KEYS.QR_CODES, codes);
+            if (!success) {
+                throw new Error('Failed to save QR code');
+            }
+            
+            // Verify it was saved
+            const verify = DB.qrCodes.getByValue(data.qrValue);
+            if (!verify) {
+                console.error('QR code save verification failed!');
+                throw new Error('QR code was not saved correctly');
+            }
+            
+            console.log('✓ QR code created and verified:', verify);
             return newCode;
         }
     },
@@ -234,7 +325,7 @@ const DB = {
     scanEvents: {
         // Get all scan events
         getAll() {
-            return JSON.parse(localStorage.getItem(DB.KEYS.SCAN_EVENTS) || '[]');
+            return readCollection(DB.KEYS.SCAN_EVENTS);
         },
 
         // Create scan event
@@ -249,7 +340,7 @@ const DB = {
                 userAgent: navigator.userAgent
             };
             events.push(newEvent);
-            localStorage.setItem(DB.KEYS.SCAN_EVENTS, JSON.stringify(events));
+            writeCollection(DB.KEYS.SCAN_EVENTS, events);
             return newEvent;
         }
     },
@@ -294,18 +385,7 @@ if (typeof window !== 'undefined') {
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => {
             DB.init();
-            // Seed test data if database is empty
-            const qrCodes = DB.qrCodes.getAll();
-            if (qrCodes.length === 0) {
-                DB.seedTestData();
-            }
         });
-    } else {
-        // DOM already loaded, seed test data if empty
-        const qrCodes = DB.qrCodes.getAll();
-        if (qrCodes.length === 0) {
-            DB.seedTestData();
-        }
     }
 }
 

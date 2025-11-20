@@ -22,7 +22,6 @@
                 <div class="button-group" style="margin-top: 30px;">
                     <button type="button" class="btn btn-primary" onclick="navigateTo('index.html')">Return to Home</button>
                     <button type="button" class="btn btn-secondary" onclick="refreshInventory()">Refresh</button>
-                    <button type="button" class="btn btn-yellow" onclick="seedTestData()">Load Test Data</button>
                 </div>
             </div>
         </main>
@@ -39,12 +38,6 @@
         document.addEventListener('DOMContentLoaded', function() {
             if (typeof DB !== 'undefined') {
                 DB.init();
-                
-                // Seed test data if database is empty
-                const qrCodes = DB.qrCodes.getAll();
-                if (qrCodes.length === 0) {
-                    DB.seedTestData();
-                }
             }
         });
     </script>

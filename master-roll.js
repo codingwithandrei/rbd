@@ -26,8 +26,8 @@ document.addEventListener('DOMContentLoaded', function() {
         qrInfo.className = 'success-message';
         qrInfo.style.marginBottom = '20px';
         qrInfo.innerHTML = `
-            <p><strong>QR Code Scanned:</strong> ${qrValue}</p>
-            <p style="font-size: 0.9rem; margin-top: 8px;">Please confirm and register this master roll.</p>
+            <p><strong>QR Code Verified:</strong> ${qrValue}</p>
+            <p style="font-size: 0.9rem; margin-top: 8px;">QR code found in database. Please confirm and mark this master roll as received.</p>
         `;
         messageContainer.appendChild(qrInfo);
     }
@@ -45,6 +45,23 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Determine QR value
         const finalQRValue = qrValue || `${lotNumber}-${stockNumber}`;
+
+        // VALIDATION: Master roll cannot be marked as received without a QR code in database
+        if (!qrValue) {
+            // No QR code in URL - check if QR code exists in database for this lot/stock
+            const qrCodeInDB = DB.qrCodes.getByValue(finalQRValue);
+            if (!qrCodeInDB) {
+                showMessage('ERROR: Cannot mark master roll as received. QR code must be generated first using "Generate QR Codes".', 'error');
+                return;
+            }
+        } else {
+            // QR code in URL - verify it exists in database
+            const qrCodeInDB = DB.qrCodes.getByValue(qrValue);
+            if (!qrCodeInDB) {
+                showMessage('ERROR: QR code not found in database. Please generate this QR code first using "Generate QR Codes".', 'error');
+                return;
+            }
+        }
 
         // Check if master roll already exists
         const existingRoll = DB.masterRolls.getByQR(finalQRValue);
@@ -64,14 +81,14 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        // Create master roll record (Stage 1)
+        // Create master roll record (Stage 1) - Mark as "received"
         const newMasterRoll = DB.masterRolls.create({
             qrValue: finalQRValue,
             stockNumber: stockNumber,
             lotNumber: lotNumber
         });
 
-        // Ensure QR code record exists
+        // Ensure QR code record exists (should already exist from generation, but double-check)
         if (!DB.qrCodes.getByValue(finalQRValue)) {
             DB.qrCodes.create({
                 qrValue: finalQRValue,
@@ -86,7 +103,16 @@ document.addEventListener('DOMContentLoaded', function() {
             action: 'registration'
         });
 
-        showMessage('Master roll registered successfully! Status: Registered (ready for slitting)', 'success');
+        // Verify the master roll was saved
+        const verifyRoll = DB.masterRolls.getByQR(finalQRValue);
+        if (!verifyRoll) {
+            console.error('ERROR: Master roll was not saved!');
+            showMessage('ERROR: Failed to save master roll. Please try again.', 'error');
+            return;
+        }
+
+        console.log('✓ Master roll saved and verified:', verifyRoll);
+        showMessage('Master roll marked as received successfully! Status: Received (ready for slitting)', 'success');
         
         // Clear form
         form.reset();

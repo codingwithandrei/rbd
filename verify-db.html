@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify Database - RBD App</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1 class="logo">Database Verification</h1>
+            <p class="subtitle">Verify all database operations are working</p>
+        </header>
+
+        <main class="main-content">
+            <div class="form-container">
+                <div id="verificationResults"></div>
+                
+                <div class="button-group" style="margin-top: 30px;">
+                    <button class="btn btn-primary" onclick="runFullTest()">Run Full Test</button>
+                    <button class="btn btn-secondary" onclick="navigateTo('index.html')">Return to Home</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="database.js"></script>
+    <script src="app.js"></script>
+    <script>
+        function runFullTest() {
+            const results = document.getElementById('verificationResults');
+            results.innerHTML = '<p>Running tests...</p>';
+            
+            const tests = [];
+            
+            // Test 1: Create QR Code
+            try {
+                const testQR = DB.qrCodes.create({
+                    qrValue: 'verify-lot-verify-stock',
+                    lotNumber: 'verify-lot',
+                    stockNumber: 'verify-stock'
+                });
+                const verifyQR = DB.qrCodes.getByValue('verify-lot-verify-stock');
+                if (verifyQR) {
+                    tests.push({ name: 'Create QR Code', status: 'PASS', details: 'QR code created and verified' });
+                } else {
+                    tests.push({ name: 'Create QR Code', status: 'FAIL', details: 'QR code not found after creation' });
+                }
+            } catch (error) {
+                tests.push({ name: 'Create QR Code', status: 'FAIL', details: error.message });
+            }
+            
+            // Test 2: Create Master Roll
+            try {
+                const testRoll = DB.masterRolls.create({
+                    qrValue: 'verify-lot-verify-stock',
+                    lotNumber: 'verify-lot',
+                    stockNumber: 'verify-stock'
+                });
+                const verifyRoll = DB.masterRolls.getByQR('verify-lot-verify-stock');
+                if (verifyRoll) {
+                    tests.push({ name: 'Create Master Roll', status: 'PASS', details: 'Master roll created and verified' });
+                } else {
+                    tests.push({ name: 'Create Master Roll', status: 'FAIL', details: 'Master roll not found after creation' });
+                }
+            } catch (error) {
+                tests.push({ name: 'Create Master Roll', status: 'FAIL', details: error.message });
+            }
+            
+            // Test 3: Create Child Rolls
+            try {
+                const testChildRolls = DB.childRolls.createBatch('verify-lot-verify-stock', [225, 241, 325], 'test-job-verify');
+                const verifyChildRolls = DB.childRolls.getByMasterQR('verify-lot-verify-stock');
+                if (verifyChildRolls.length === 3) {
+                    tests.push({ name: 'Create Child Rolls', status: 'PASS', details: `Created ${verifyChildRolls.length} child rolls` });
+                } else {
+                    tests.push({ name: 'Create Child Rolls', status: 'FAIL', details: `Expected 3, got ${verifyChildRolls.length}` });
+                }
+            } catch (error) {
+                tests.push({ name: 'Create Child Rolls', status: 'FAIL', details: error.message });
+            }
+            
+            // Test 4: Mark as Slit
+            try {
+                DB.masterRolls.markAsSlit('verify-lot-verify-stock');
+                const verifySlit = DB.masterRolls.getByQR('verify-lot-verify-stock');
+                if (verifySlit && verifySlit.status === 'slit') {
+                    tests.push({ name: 'Mark as Slit', status: 'PASS', details: 'Master roll marked as slit' });
+                } else {
+                    tests.push({ name: 'Mark as Slit', status: 'FAIL', details: 'Status not updated to slit' });
+                }
+            } catch (error) {
+                tests.push({ name: 'Mark as Slit', status: 'FAIL', details: error.message });
+            }
+            
+            // Test 5: Verify in Inventory
+            try {
+                const allMasterRolls = DB.masterRolls.getAll();
+                const allChildRolls = DB.childRolls.getAll();
+                const allQRCodes = DB.qrCodes.getAll();
+                
+                const foundMaster = allMasterRolls.find(r => r.qrValue === 'verify-lot-verify-stock');
+                const foundChild = allChildRolls.filter(r => r.masterRollQR === 'verify-lot-verify-stock');
+                const foundQR = allQRCodes.find(r => r.qrValue === 'verify-lot-verify-stock');
+                
+                if (foundMaster && foundChild.length === 3 && foundQR) {
+                    tests.push({ name: 'Data Persistence', status: 'PASS', details: 'All data persists correctly' });
+                } else {
+                    tests.push({ name: 'Data Persistence', status: 'FAIL', details: `Master: ${!!foundMaster}, Child: ${foundChild.length}, QR: ${!!foundQR}` });
+                }
+            } catch (error) {
+                tests.push({ name: 'Data Persistence', status: 'FAIL', details: error.message });
+            }
+            
+            // Display results
+            const passed = tests.filter(t => t.status === 'PASS').length;
+            const failed = tests.filter(t => t.status === 'FAIL').length;
+            
+            results.innerHTML = `
+                <h3 style="color: var(--primary-blue); margin-bottom: 20px;">Test Results</h3>
+                <div style="margin-bottom: 20px;">
+                    <p><strong>Passed:</strong> ${passed} / ${tests.length}</p>
+                    <p><strong>Failed:</strong> ${failed} / ${tests.length}</p>
+                </div>
+                <div>
+                    ${tests.map(test => `
+                        <div style="padding: 12px; margin-bottom: 12px; border-radius: 8px; ${test.status === 'PASS' ? 'background: #d1fae5; border: 2px solid var(--success-green);' : 'background: #fee2e2; border: 2px solid var(--error-red);'}">
+                            <strong>${test.status === 'PASS' ? '✓' : '✗'}</strong> ${test.name}: ${test.details}
+                        </div>
+                    `).join('')}
+                </div>
+                <div style="margin-top: 20px;">
+                    <h4>Current Database State:</h4>
+                    <pre style="background: var(--gray-50); padding: 12px; border-radius: 8px; overflow-x: auto; font-size: 0.85rem;">${JSON.stringify(DB.getSnapshot(), null, 2)}</pre>
+                </div>
+            `;
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            DB.init();
+            runFullTest();
+        });
+    </script>
+</body>
+</html>
+
