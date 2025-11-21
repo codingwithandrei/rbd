@@ -215,8 +215,8 @@ function printLabels() {
                 <div class="label-content">
                     <div class="label-qr-code" id="print-qr-${index}"></div>
                     <div class="label-info">
-                        <div class="label-stock">${qr.stockNumber || 'N/A'}</div>
-                        <div class="label-lot">${qr.lotNumber || 'N/A'}</div>
+                        <div class="label-stock"><strong>Stock:</strong> ${qr.stockNumber || 'N/A'}</div>
+                        <div class="label-lot"><strong>Lot:</strong> ${qr.lotNumber || 'N/A'}</div>
                     </div>
                 </div>
             `;
