@@ -236,10 +236,11 @@ function printLabels() {
             }
             
             try {
+                // Make QR code larger for print - will scale with page
                 new QRCode(qrElement, {
                     text: qrUrl,
-                    width: 150,
-                    height: 150,
+                    width: 300,
+                    height: 300,
                     colorDark: '#000000',
                     colorLight: '#ffffff',
                     correctLevel: QRCode.CorrectLevel.H

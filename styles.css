@@ -1048,14 +1048,19 @@ body {
     
     .label-print-item {
         display: block;
-        width: 4in;
-        height: 2in;
+        width: 90%;
+        max-width: 7in;
+        height: 90vh;
+        max-height: 9in;
         border: 1px solid #000;
-        padding: 10px;
+        padding: 20px;
         margin: 0 auto;
         page-break-after: always;
         page-break-inside: avoid;
         box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
     
     .label-print-item:last-child {
@@ -1064,7 +1069,8 @@ body {
     
     .label-qr-code {
         float: left;
-        margin-right: 10px;
+        margin-right: 20px;
+        flex-shrink: 0;
     }
     
     .label-info {
@@ -1072,17 +1078,18 @@ body {
         flex-direction: column;
         justify-content: center;
         height: 100%;
+        flex: 1;
     }
     
     .label-stock,
     .label-lot {
-        font-size: 14pt;
-        margin-bottom: 5px;
+        font-size: 2.5vw;
+        margin-bottom: 10px;
         font-weight: bold;
     }
     
     .label-url {
-        font-size: 8pt;
+        font-size: 1.2vw;
         word-break: break-all;
         color: #666;
     }
