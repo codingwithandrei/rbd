@@ -212,10 +212,9 @@ async function displayStockGroups() {
                 ${stockNumbers.map(stockNumber => {
                     const lots = stockGroups[stockNumber];
                     const totalLots = lots.length;
-                    const registeredCount = lots.filter(r => r.isRegistered && r.status === 'registered').length;
-                    // Count as "slit" if status is 'slit' OR has child rolls
-                    // Note: slitCount calculation will be done async in the template
-                    const slitCount = lots.filter(r => r.isRegistered && r.status === 'slit').length;
+                    // Registered = any lot that has a master roll (isRegistered = true)
+                    const registeredCount = lots.filter(r => r.isRegistered).length;
+                    // Unregistered = only QR codes without master rolls
                     const unregisteredCount = lots.filter(r => !r.isRegistered).length;
                     
                     return `
@@ -338,6 +337,7 @@ async function displayLotsForStock(stockNumber) {
         const availableRolls = childRolls.filter(r => r.status === 'AVAILABLE').length;
         const usedRolls = childRolls.filter(r => r.status === 'USED').length;
         const isSlit = roll.status === 'slit' || childRolls.length > 0;
+        // isUnregistered should only be true if master roll doesn't exist (QR code only)
         const isUnregistered = !roll.isRegistered;
         
         return { roll, childRolls, availableRolls, usedRolls, isSlit, isUnregistered };
@@ -357,15 +357,31 @@ async function displayLotsForStock(stockNumber) {
         </div>
         <div class="lots-container">
             ${lotsWithData.map(({ roll, childRolls, availableRolls, usedRolls, isSlit, isUnregistered }) => {
+                // Status logic: Only show "NOT REGISTERED" if truly unregistered
+                // If registered (even if slit), show "REGISTERED" with optional SLIT indicator
+                const displayStatus = isUnregistered ? 'NOT REGISTERED' : 'REGISTERED';
+                const statusClass = isUnregistered ? 'unregistered' : 'registered';
+                
                 return `
                     <div class="lot-card" onclick="selectLot('${stockNumber}', '${roll.lotNumber}')">
                         <div class="lot-card-header">
                             <h4>Lot Number: ${roll.lotNumber}</h4>
-                            <div class="lot-status-badge ${isUnregistered ? 'unregistered' : (isSlit ? 'slit' : 'registered')}">
-                                ${isUnregistered ? 'NOT REGISTERED' : (isSlit ? 'SLIT' : 'REGISTERED')}
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <div class="lot-status-badge ${statusClass}">
+                                    ${displayStatus}
+                                </div>
+                                ${isSlit && !isUnregistered ? `
+                                    <div class="lot-status-badge slit" style="font-size: 0.75rem; padding: 4px 8px;">
+                                        SLIT
+                                    </div>
+                                ` : ''}
                             </div>
                         </div>
                         <div class="lot-card-body">
+                            <div class="lot-info-row">
+                                <span class="lot-label">Stock Number:</span>
+                                <span class="lot-value">${roll.stockNumber}</span>
+                            </div>
                             <div class="lot-info-row">
                                 <span class="lot-label">QR Value:</span>
                                 <span class="lot-value">${roll.qrValue}</span>
@@ -391,7 +407,7 @@ async function displayLotsForStock(stockNumber) {
                             ` : `
                                 <div class="lot-info-row">
                                     <span class="lot-label">Status:</span>
-                                    <span class="lot-value">Not yet slit</span>
+                                    <span class="lot-value">Registered, not yet slit</span>
                                 </div>
                             `}
                         </div>
@@ -554,9 +570,14 @@ async function displayLotDetails(stockNumber, lotNumber) {
                 <div class="detail-item">
                     <span class="detail-label">Status:</span>
                     <span class="detail-value">
-                        <span class="status-badge ${isUnregistered ? 'unregistered' : masterRoll.status}">
-                            ${isUnregistered ? 'NOT REGISTERED' : masterRoll.status.toUpperCase()}
+                        <span class="status-badge ${isUnregistered ? 'unregistered' : 'registered'}">
+                            ${isUnregistered ? 'NOT REGISTERED' : 'REGISTERED'}
                         </span>
+                        ${!isUnregistered && (masterRoll.status === 'slit' || childRolls.length > 0) ? `
+                            <span class="status-badge slit" style="margin-left: 8px;">
+                                SLIT
+                            </span>
+                        ` : ''}
                     </span>
                 </div>
                 ${isUnregistered ? `
