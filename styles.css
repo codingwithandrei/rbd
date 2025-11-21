@@ -430,8 +430,6 @@ body {
 .roll-selection-card.used-roll:hover {
     transform: none;
 }
-
-.roll-selection-card {
     background: var(--white);
     border: 2px solid var(--gray-200);
     border-radius: 12px;
