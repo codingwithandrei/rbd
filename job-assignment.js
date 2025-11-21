@@ -377,6 +377,29 @@ async function submitJobAssignment() {
     }
     
     try {
+        // VALIDATION: Verify QR code exists in database (must be generated first)
+        const qrCodeInDB = await DB.qrCodes.getByValue(finalQRValue);
+        if (!qrCodeInDB) {
+            isSubmitting = false;
+            if (submitButton) {
+                submitButton.disabled = false;
+                submitButton.textContent = 'Submit Job Assignment';
+            }
+            alert(`ERROR: QR code not found in database.\n\nStock: ${stockNumber}\nLot: ${lotNumber}\n\nPlease generate this QR code first using "Generate QR Codes".`);
+            return;
+        }
+        
+        // Verify that the entered lot/stock match the QR code in database
+        if (qrCodeInDB.lotNumber !== lotNumber || qrCodeInDB.stockNumber !== stockNumber) {
+            isSubmitting = false;
+            if (submitButton) {
+                submitButton.disabled = false;
+                submitButton.textContent = 'Submit Job Assignment';
+            }
+            alert(`ERROR: Lot/Stock mismatch.\n\nEntered: Stock "${stockNumber}", Lot "${lotNumber}"\n\nQR Code in database: Stock "${qrCodeInDB.stockNumber}", Lot "${qrCodeInDB.lotNumber}"\n\nPlease enter the correct values that match the generated QR code.`);
+            return;
+        }
+        
         // Check if child rolls already exist for this master roll
         const existingChildRolls = await DB.childRolls.getByMasterQR(finalQRValue);
         if (existingChildRolls.length > 0) {
@@ -395,36 +418,13 @@ async function submitJobAssignment() {
         if (!masterRoll) {
             masterRoll = await DB.masterRolls.getByQR(finalQRValue);
             if (!masterRoll) {
-                // Check if QR code exists - if so, auto-create master roll
-                const qrCode = await DB.qrCodes.getByValue(finalQRValue);
-                if (qrCode) {
-                    // Auto-create master roll from QR code
-                    masterRoll = await DB.masterRolls.create({
-                        qrValue: finalQRValue,
-                        stockNumber: qrCode.stockNumber,
-                        lotNumber: qrCode.lotNumber
-                    });
-                } else {
-                    // Manual entry - create QR code and master roll if they don't exist
-                    // First, create QR code record
-                    const newQRCode = await DB.qrCodes.create({
-                        qrValue: finalQRValue,
-                        stockNumber: stockNumber,
-                        lotNumber: lotNumber
-                    });
-                    
-                    // Then create master roll
-                    masterRoll = await DB.masterRolls.create({
-                        qrValue: finalQRValue,
-                        stockNumber: stockNumber,
-                        lotNumber: lotNumber
-                    });
-                    
-                    console.log('Created QR code and master roll from manual entry:', {
-                        qrCode: newQRCode,
-                        masterRoll: masterRoll
-                    });
-                }
+                // QR code exists but master roll doesn't - auto-create master roll from QR code
+                masterRoll = await DB.masterRolls.create({
+                    qrValue: finalQRValue,
+                    stockNumber: qrCodeInDB.stockNumber,
+                    lotNumber: qrCodeInDB.lotNumber
+                });
+                console.log('Created master roll from existing QR code:', masterRoll);
             }
         }
 
