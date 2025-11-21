@@ -93,11 +93,52 @@
                     return;
                 }
                 
-                // QR code found in database - verify and route to Master Roll Registration
+                // QR code found in database - determine stage and route accordingly
                 console.log('QR Code verified in database:', qrCodeInDB);
                 
-                // Route to Master Roll Registration to mark as "received"
-                window.location.href = `master-roll.html?qr=${encodeURIComponent(finalQRValue)}&lot=${encodeURIComponent(qrCodeInDB.lotNumber || lot || '')}&stock=${encodeURIComponent(qrCodeInDB.stockNumber || stock || '')}`;
+                // Determine the current stage of this QR code
+                const stage = await DB.getQRStage(finalQRValue);
+                console.log('QR Code stage detected:', stage);
+                
+                // Route based on stage
+                if (stage === 'stage1') {
+                    // Stage 1: Needs registration - route to Master Roll Registration
+                    window.location.href = `master-roll.html?qr=${encodeURIComponent(finalQRValue)}&lot=${encodeURIComponent(qrCodeInDB.lotNumber || lot || '')}&stock=${encodeURIComponent(qrCodeInDB.stockNumber || stock || '')}`;
+                } else if (stage === 'stage2') {
+                    // Stage 2: Needs job assignment - route to Job Assignment
+                    window.location.href = `job-assignment.html?qr=${encodeURIComponent(finalQRValue)}`;
+                } else if (stage === 'stage3') {
+                    // Stage 3: Can select rolls - route to Roll Selection
+                    window.location.href = `select-roll.html?qr=${encodeURIComponent(finalQRValue)}`;
+                } else if (stage === 'all_used') {
+                    // All rolls used - show message
+                    document.querySelector('.main-content').innerHTML = `
+                        <div class="form-container">
+                            <div class="error-message">
+                                <h3>All Rolls Used</h3>
+                                <p>All rolls from this master roll have already been used.</p>
+                                <p style="margin-top: 12px;"><strong>QR Code:</strong> ${finalQRValue}</p>
+                            </div>
+                            <div class="button-group" style="margin-top: 20px;">
+                                <button class="btn btn-primary" onclick="navigateTo('index.html')">Return to Home</button>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    // Unknown stage or not found
+                    document.querySelector('.main-content').innerHTML = `
+                        <div class="form-container">
+                            <div class="error-message">
+                                <h3>Unable to Determine Stage</h3>
+                                <p>Could not determine the current stage for this QR code.</p>
+                                <p style="margin-top: 12px;"><strong>QR Code:</strong> ${finalQRValue}</p>
+                            </div>
+                            <div class="button-group" style="margin-top: 20px;">
+                                <button class="btn btn-primary" onclick="navigateTo('index.html')">Return to Home</button>
+                            </div>
+                        </div>
+                    `;
+                }
             }
         });
     </script>
