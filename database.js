@@ -273,14 +273,21 @@ const DB = {
         },
 
         // Mark a child roll as used
-        async markAsUsed(childRollId) {
+        async markAsUsed(childRollId, jobId = null) {
             try {
                 const db = DB._getDB();
                 const docRef = db.collection('childRolls').doc(childRollId);
-                await docRef.update({
+                const updateData = {
                     status: 'USED',
                     usedAt: firebase.firestore.FieldValue.serverTimestamp()
-                });
+                };
+                
+                // Add job ID if provided
+                if (jobId) {
+                    updateData.usedJobId = jobId;
+                }
+                
+                await docRef.update(updateData);
                 
                 const updated = await docRef.get();
                 return DB._docToObject(updated);

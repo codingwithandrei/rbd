@@ -418,6 +418,20 @@ body {
 }
 
 .roll-selection-card {
+    opacity: 1;
+    transition: opacity 0.2s;
+}
+
+.roll-selection-card.used-roll {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.roll-selection-card.used-roll:hover {
+    transform: none;
+}
+
+.roll-selection-card {
     background: var(--white);
     border: 2px solid var(--gray-200);
     border-radius: 12px;

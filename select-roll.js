@@ -1,6 +1,7 @@
 // Select Roll functionality - Stage 3
 let qrValue = null;
-let availableRolls = [];
+let allChildRolls = []; // Store all child rolls (available and used)
+let rollNumberMap = {}; // Map to maintain consistent roll numbers
 
 document.addEventListener('DOMContentLoaded', async function() {
     // Initialize database
@@ -34,13 +35,43 @@ document.addEventListener('DOMContentLoaded', async function() {
         </small>
     `;
 
-    // Load available rolls
-    await loadAvailableRolls();
+    // Load all rolls (available and used)
+    await loadAllRolls();
 });
 
-async function loadAvailableRolls() {
-    availableRolls = await DB.childRolls.getAvailableByMasterQR(qrValue);
+async function loadAllRolls() {
+    // Get ALL child rolls (not just available ones)
+    allChildRolls = await DB.childRolls.getByMasterQR(qrValue);
+    
+    // Sort by creation time or ID to maintain consistent order
+    allChildRolls.sort((a, b) => {
+        // Sort by createdAt if available, otherwise by ID
+        if (a.createdAt && b.createdAt) {
+            return new Date(a.createdAt) - new Date(b.createdAt);
+        }
+        return a.id.localeCompare(b.id);
+    });
+    
+    // Create consistent roll number mapping (1-based index)
+    rollNumberMap = {};
+    allChildRolls.forEach((roll, index) => {
+        rollNumberMap[roll.id] = index + 1;
+    });
+    
+    const availableRolls = allChildRolls.filter(r => r.status === 'AVAILABLE');
+    const usedRolls = allChildRolls.filter(r => r.status === 'USED');
+    
     const container = document.getElementById('rollsListContainer');
+
+    if (allChildRolls.length === 0) {
+        container.innerHTML = `
+            <div class="error-message">
+                <h3 style="margin-bottom: 12px;">No Rolls Found</h3>
+                <p>No child rolls have been created for this master roll yet.</p>
+            </div>
+        `;
+        return;
+    }
 
     if (availableRolls.length === 0) {
         container.innerHTML = `
@@ -49,68 +80,95 @@ async function loadAvailableRolls() {
                 <p>All rolls from this master roll have already been used.</p>
                 <p style="margin-top: 12px;">
                     <strong>Master Roll:</strong> ${qrValue}<br>
-                    <strong>Status:</strong> All child rolls consumed
+                    <strong>Total Rolls:</strong> ${allChildRolls.length}<br>
+                    <strong>Used:</strong> ${usedRolls.length}
                 </p>
             </div>
         `;
         return;
     }
 
-    // Display available rolls
+    // Display all rolls with consistent numbering
     container.innerHTML = `
         <h3 class="form-title" style="font-size: 1.3rem; margin-bottom: 20px;">
-            Available Rolls (${availableRolls.length})
+            All Rolls (${availableRolls.length} Available / ${allChildRolls.length} Total)
         </h3>
         <p class="form-subtitle" style="margin-bottom: 24px;">
-            Select a roll to mark as used
+            Select an available roll to mark as used
         </p>
         <div class="rolls-selection-grid">
-            ${availableRolls.map((roll, index) => `
-                <div class="roll-selection-card" onclick="selectRoll('${roll.id}')">
+            ${allChildRolls.map((roll) => {
+                const rollNumber = rollNumberMap[roll.id];
+                const isAvailable = roll.status === 'AVAILABLE';
+                const usedJobId = roll.usedJobId || (roll.jobId && roll.status === 'USED' ? roll.jobId : null);
+                
+                return `
+                <div class="roll-selection-card ${!isAvailable ? 'used-roll' : ''}" ${isAvailable ? `onclick="selectRoll('${roll.id}')"` : ''}>
                     <div class="roll-card-header">
-                        <h4>Roll ${index + 1}</h4>
-                        <div class="roll-status-badge available">AVAILABLE</div>
+                        <h4>Roll ${rollNumber}</h4>
+                        <div class="roll-status-badge ${isAvailable ? 'available' : 'used'}">${isAvailable ? 'AVAILABLE' : 'USED'}</div>
                     </div>
                     <div class="roll-card-body">
                         <div class="roll-size-display">
                             <span class="roll-size-value">${roll.width}</span>
                             <span class="roll-size-unit">mm</span>
                         </div>
-                        <p class="roll-id">ID: ${roll.id.substring(0, 8)}...</p>
+                        ${usedJobId ? `<p class="roll-job" style="font-size: 0.85rem; color: var(--gray-600); margin-top: 8px;"><strong>Job:</strong> ${usedJobId}</p>` : ''}
+                        ${!isAvailable ? `<p class="roll-id" style="color: var(--gray-500);">Already used</p>` : ''}
                     </div>
+                    ${isAvailable ? `
                     <div class="roll-card-footer">
                         <button class="btn btn-primary btn-block" onclick="event.stopPropagation(); selectRoll('${roll.id}');">
                             Select This Roll
                         </button>
                     </div>
+                    ` : ''}
                 </div>
-            `).join('')}
+            `;
+            }).join('')}
         </div>
     `;
 }
 
 async function selectRoll(childRollId) {
     // Find the roll
-    const roll = availableRolls.find(r => r.id === childRollId);
+    const roll = allChildRolls.find(r => r.id === childRollId);
     if (!roll) {
         showError('Roll not found');
         return;
     }
 
-    // Confirm selection
-    if (!confirm(`Mark roll ${roll.width}mm as USED?`)) {
+    if (roll.status !== 'AVAILABLE') {
+        alert('This roll has already been used.');
+        return;
+    }
+
+    const rollNumber = rollNumberMap[roll.id] || '?';
+    
+    // Prompt for job number
+    const jobNumber = prompt(`Enter Job Number for Roll ${rollNumber} (${roll.width}mm):`, '');
+    
+    if (jobNumber === null) {
+        // User cancelled
+        return;
+    }
+    
+    const trimmedJobNumber = jobNumber.trim();
+    if (!trimmedJobNumber) {
+        alert('Job number is required. Please enter a job number.');
         return;
     }
 
     try {
-        // Mark roll as used
-        await DB.childRolls.markAsUsed(childRollId);
+        // Mark roll as used with job number
+        await DB.childRolls.markAsUsed(childRollId, trimmedJobNumber);
 
         // Log scan event
         await DB.scanEvents.create({
             qrValue: qrValue,
             action: 'roll_selected',
-            childRollId: childRollId
+            childRollId: childRollId,
+            jobId: trimmedJobNumber
         });
 
         // Show success message
@@ -118,17 +176,16 @@ async function selectRoll(childRollId) {
         messageContainer.innerHTML = `
             <div class="success-message">
                 <h3 style="margin-bottom: 12px;">Roll Marked as Used</h3>
+                <p><strong>Roll Number:</strong> ${rollNumber}</p>
                 <p><strong>Width:</strong> ${roll.width}mm</p>
+                <p><strong>Job Number:</strong> ${trimmedJobNumber}</p>
                 <p><strong>Status:</strong> USED</p>
-                <p style="margin-top: 12px; font-size: 0.9rem;">
-                    This roll has been marked as consumed and will no longer appear in the available list.
-                </p>
             </div>
         `;
 
-        // Reload available rolls
+        // Reload all rolls (to show updated status)
         setTimeout(async () => {
-            await loadAvailableRolls();
+            await loadAllRolls();
             messageContainer.innerHTML = '';
         }, 2000);
     } catch (error) {
