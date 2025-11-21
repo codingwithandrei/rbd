@@ -137,6 +137,13 @@ async function proceedToNumberOfRolls() {
                 return;
             }
             
+            // Ensure database is initialized
+            if (!DB || !DB.qrCodes) {
+                console.error('❌ Database not initialized');
+                alert('ERROR: Database not initialized. Please refresh the page and try again.');
+                return;
+            }
+            
             const finalQRValue = `${lotNumber}-${stockNumber}`;
             console.log('🔍 Validating QR code before proceeding:', {
                 finalQRValue: finalQRValue,
@@ -144,31 +151,40 @@ async function proceedToNumberOfRolls() {
                 stockNumber: stockNumber
             });
             
-            // Check if QR code exists in database
-            const qrCodeInDB = await DB.qrCodes.getByValue(finalQRValue);
-            console.log('🔍 QR code lookup result:', qrCodeInDB);
-            
-            if (!qrCodeInDB) {
-                console.error('❌ Validation failed: QR code not found in database');
-                alert(`ERROR: QR code not found in database.\n\nStock: ${stockNumber}\nLot: ${lotNumber}\nQR Value: ${finalQRValue}\n\nPlease generate this QR code first using "Generate QR Codes".`);
+            // Check if QR code exists in database - BLOCKING VALIDATION
+            let qrCodeInDB = null;
+            try {
+                qrCodeInDB = await DB.qrCodes.getByValue(finalQRValue);
+                console.log('🔍 QR code lookup result:', qrCodeInDB);
+            } catch (dbError) {
+                console.error('❌ Database query error:', dbError);
+                alert(`ERROR: Database query failed. ${dbError.message}\n\nPlease check the console and try again.`);
                 return;
             }
             
+            // CRITICAL: If no QR code found, BLOCK progression
+            if (!qrCodeInDB || qrCodeInDB === null) {
+                console.error('❌ Validation failed: QR code not found in database');
+                alert(`ERROR: QR code not found in database.\n\nStock: ${stockNumber}\nLot: ${lotNumber}\nQR Value: ${finalQRValue}\n\nPlease generate this QR code first using "Generate QR Codes".`);
+                return; // BLOCK - do not proceed
+            }
+            
             // Verify that entered lot/stock match the QR code in database (case-sensitive comparison)
-            const lotMatch = qrCodeInDB.lotNumber === lotNumber;
-            const stockMatch = qrCodeInDB.stockNumber === stockNumber;
+            const lotMatch = String(qrCodeInDB.lotNumber).trim() === String(lotNumber).trim();
+            const stockMatch = String(qrCodeInDB.stockNumber).trim() === String(stockNumber).trim();
             
             console.log('🔍 Comparing values:', {
-                entered: { lotNumber, stockNumber },
-                inDB: { lotNumber: qrCodeInDB.lotNumber, stockNumber: qrCodeInDB.stockNumber },
+                entered: { lotNumber: String(lotNumber).trim(), stockNumber: String(stockNumber).trim() },
+                inDB: { lotNumber: String(qrCodeInDB.lotNumber).trim(), stockNumber: String(qrCodeInDB.stockNumber).trim() },
                 lotMatch: lotMatch,
                 stockMatch: stockMatch
             });
             
+            // CRITICAL: If values don't match, BLOCK progression
             if (!lotMatch || !stockMatch) {
                 console.error('❌ Validation failed: Lot/Stock mismatch');
                 alert(`ERROR: Lot/Stock mismatch.\n\nEntered: Stock "${stockNumber}", Lot "${lotNumber}"\n\nQR Code in database: Stock "${qrCodeInDB.stockNumber}", Lot "${qrCodeInDB.lotNumber}"\n\nPlease enter the correct values that match the generated QR code.`);
-                return;
+                return; // BLOCK - do not proceed
             }
             
             console.log('✅ Validation passed, QR code found and matches:', qrCodeInDB);
@@ -176,6 +192,7 @@ async function proceedToNumberOfRolls() {
             console.log('✅ QR code provided via scan, skipping manual validation');
         }
 
+        // Only proceed if validation passed (or QR code was scanned)
         jobNumber = jobValue;
 
         // Hide step 0, show step 1
@@ -183,6 +200,7 @@ async function proceedToNumberOfRolls() {
         document.getElementById('step1').style.display = 'block';
     } catch (error) {
         console.error('❌ Error in proceedToNumberOfRolls:', error);
+        console.error('Error stack:', error.stack);
         alert(`ERROR: Validation failed. ${error.message}\n\nPlease check the console for details.`);
     }
 }
