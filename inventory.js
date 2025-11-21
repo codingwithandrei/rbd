@@ -212,9 +212,10 @@ async function displayStockGroups() {
                 ${stockNumbers.map(stockNumber => {
                     const lots = stockGroups[stockNumber];
                     const totalLots = lots.length;
-                    // Registered = any lot that has a master roll (isRegistered = true)
-                    const registeredCount = lots.filter(r => r.isRegistered).length;
-                    // Unregistered = only QR codes without master rolls
+                    const registeredCount = lots.filter(r => r.isRegistered && r.status === 'registered').length;
+                    // Count as "slit" if status is 'slit' OR has child rolls
+                    // Note: slitCount calculation will be done async in the template
+                    const slitCount = lots.filter(r => r.isRegistered && r.status === 'slit').length;
                     const unregisteredCount = lots.filter(r => !r.isRegistered).length;
                     
                     return `
@@ -337,7 +338,6 @@ async function displayLotsForStock(stockNumber) {
         const availableRolls = childRolls.filter(r => r.status === 'AVAILABLE').length;
         const usedRolls = childRolls.filter(r => r.status === 'USED').length;
         const isSlit = roll.status === 'slit' || childRolls.length > 0;
-        // isUnregistered should only be true if master roll doesn't exist (QR code only)
         const isUnregistered = !roll.isRegistered;
         
         return { roll, childRolls, availableRolls, usedRolls, isSlit, isUnregistered };
@@ -357,31 +357,15 @@ async function displayLotsForStock(stockNumber) {
         </div>
         <div class="lots-container">
             ${lotsWithData.map(({ roll, childRolls, availableRolls, usedRolls, isSlit, isUnregistered }) => {
-                // Status logic: Only show "NOT REGISTERED" if truly unregistered
-                // If registered (even if slit), show "REGISTERED" with optional SLIT indicator
-                const displayStatus = isUnregistered ? 'NOT REGISTERED' : 'REGISTERED';
-                const statusClass = isUnregistered ? 'unregistered' : 'registered';
-                
                 return `
                     <div class="lot-card" onclick="selectLot('${stockNumber}', '${roll.lotNumber}')">
                         <div class="lot-card-header">
                             <h4>Lot Number: ${roll.lotNumber}</h4>
-                            <div style="display: flex; gap: 8px; align-items: center;">
-                                <div class="lot-status-badge ${statusClass}">
-                                    ${displayStatus}
-                                </div>
-                                ${isSlit && !isUnregistered ? `
-                                    <div class="lot-status-badge slit" style="font-size: 0.75rem; padding: 4px 8px;">
-                                        SLIT
-                                    </div>
-                                ` : ''}
+                            <div class="lot-status-badge ${isUnregistered ? 'unregistered' : (isSlit ? 'slit' : 'registered')}">
+                                ${isUnregistered ? 'NOT REGISTERED' : (isSlit ? 'SLIT' : 'REGISTERED')}
                             </div>
                         </div>
                         <div class="lot-card-body">
-                            <div class="lot-info-row">
-                                <span class="lot-label">Stock Number:</span>
-                                <span class="lot-value">${roll.stockNumber}</span>
-                            </div>
                             <div class="lot-info-row">
                                 <span class="lot-label">QR Value:</span>
                                 <span class="lot-value">${roll.qrValue}</span>
@@ -407,7 +391,7 @@ async function displayLotsForStock(stockNumber) {
                             ` : `
                                 <div class="lot-info-row">
                                     <span class="lot-label">Status:</span>
-                                    <span class="lot-value">Registered, not yet slit</span>
+                                    <span class="lot-value">Not yet slit</span>
                                 </div>
                             `}
                         </div>
@@ -570,14 +554,9 @@ async function displayLotDetails(stockNumber, lotNumber) {
                 <div class="detail-item">
                     <span class="detail-label">Status:</span>
                     <span class="detail-value">
-                        <span class="status-badge ${isUnregistered ? 'unregistered' : 'registered'}">
-                            ${isUnregistered ? 'NOT REGISTERED' : 'REGISTERED'}
+                        <span class="status-badge ${isUnregistered ? 'unregistered' : masterRoll.status}">
+                            ${isUnregistered ? 'NOT REGISTERED' : masterRoll.status.toUpperCase()}
                         </span>
-                        ${!isUnregistered && (masterRoll.status === 'slit' || childRolls.length > 0) ? `
-                            <span class="status-badge slit" style="margin-left: 8px;">
-                                SLIT
-                            </span>
-                        ` : ''}
                     </span>
                 </div>
                 ${isUnregistered ? `
@@ -975,6 +954,117 @@ function clearSearch() {
     loadInventory().catch(error => {
         console.error('Error loading inventory:', error);
     });
+}
+
+// Export all data to Excel (CSV format)
+async function exportToExcel() {
+    try {
+        console.log('Starting Excel export...');
+        
+        // Show loading message
+        const container = document.getElementById('inventoryContainer');
+        const originalContent = container.innerHTML;
+        container.innerHTML = '<div class="info-message"><p>Preparing export... Please wait.</p></div>';
+        
+        // Get all data from database
+        const masterRolls = await DB.masterRolls.getAll();
+        const qrCodes = await DB.qrCodes.getAll();
+        const childRolls = await DB.childRolls.getAll();
+        const scanEvents = await DB.scanEvents.getAll();
+        
+        console.log('Data fetched:', {
+            qrCodes: qrCodes.length,
+            masterRolls: masterRolls.length,
+            childRolls: childRolls.length,
+            scanEvents: scanEvents.length
+        });
+        
+        // Create CSV content
+        let csvContent = 'RBD Packaging - Inventory Export\n';
+        csvContent += `Generated: ${new Date().toLocaleString()}\n\n`;
+        
+        // QR Codes Sheet
+        csvContent += '=== QR CODES ===\n';
+        csvContent += 'QR Value,Lot Number,Stock Number,QR URL,Created At\n';
+        qrCodes.forEach(qr => {
+            const qrValue = (qr.qrValue || '').replace(/"/g, '""');
+            const lotNumber = (qr.lotNumber || '').replace(/"/g, '""');
+            const stockNumber = (qr.stockNumber || '').replace(/"/g, '""');
+            const qrUrl = (qr.qrUrl || 'N/A').replace(/"/g, '""');
+            const createdAt = qr.createdAt ? new Date(qr.createdAt).toLocaleString() : 'N/A';
+            csvContent += `"${qrValue}","${lotNumber}","${stockNumber}","${qrUrl}","${createdAt}"\n`;
+        });
+        
+        csvContent += '\n\n=== MASTER ROLLS ===\n';
+        csvContent += 'QR Value,Stock Number,Lot Number,Status,Registered At,Slit At\n';
+        masterRolls.forEach(roll => {
+            const qrValue = (roll.qrValue || '').replace(/"/g, '""');
+            const stockNumber = (roll.stockNumber || '').replace(/"/g, '""');
+            const lotNumber = (roll.lotNumber || '').replace(/"/g, '""');
+            const status = (roll.status || 'N/A').replace(/"/g, '""');
+            const registeredAt = roll.registeredAt ? new Date(roll.registeredAt).toLocaleString() : 'N/A';
+            const slitAt = roll.slitAt ? new Date(roll.slitAt).toLocaleString() : 'N/A';
+            csvContent += `"${qrValue}","${stockNumber}","${lotNumber}","${status}","${registeredAt}","${slitAt}"\n`;
+        });
+        
+        csvContent += '\n\n=== CHILD ROLLS ===\n';
+        csvContent += 'ID,Master Roll QR,Width (mm),Status,Job ID,Used Job ID,Created At,Used At\n';
+        childRolls.forEach(roll => {
+            const id = (roll.id || '').replace(/"/g, '""');
+            const masterRollQR = (roll.masterRollQR || '').replace(/"/g, '""');
+            const width = roll.width || 'N/A';
+            const status = (roll.status || 'N/A').replace(/"/g, '""');
+            const jobId = (roll.jobId || 'N/A').replace(/"/g, '""');
+            const usedJobId = (roll.usedJobId || 'N/A').replace(/"/g, '""');
+            const createdAt = roll.createdAt ? new Date(roll.createdAt).toLocaleString() : 'N/A';
+            const usedAt = roll.usedAt ? new Date(roll.usedAt).toLocaleString() : 'N/A';
+            csvContent += `"${id}","${masterRollQR}","${width}","${status}","${jobId}","${usedJobId}","${createdAt}","${usedAt}"\n`;
+        });
+        
+        csvContent += '\n\n=== SCAN EVENTS ===\n';
+        csvContent += 'ID,QR Value,Action,Child Roll ID,Timestamp,User Agent\n';
+        scanEvents.forEach(event => {
+            const id = (event.id || 'N/A').replace(/"/g, '""');
+            const qrValue = (event.qrValue || '').replace(/"/g, '""');
+            const action = (event.action || 'N/A').replace(/"/g, '""');
+            const childRollId = (event.childRollId || 'N/A').replace(/"/g, '""');
+            const timestamp = event.timestamp ? new Date(event.timestamp).toLocaleString() : 'N/A';
+            const userAgent = (event.userAgent || 'N/A').replace(/"/g, '""');
+            csvContent += `"${id}","${qrValue}","${action}","${childRollId}","${timestamp}","${userAgent}"\n`;
+        });
+        
+        // Create download
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        const fileName = `rbd-inventory-export-${new Date().toISOString().split('T')[0]}.csv`;
+        link.setAttribute('download', fileName);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        
+        // Restore original content
+        container.innerHTML = originalContent;
+        
+        // Show success message
+        alert(`✓ Export successful!\n\nFile: ${fileName}\n\nQR Codes: ${qrCodes.length}\nMaster Rolls: ${masterRolls.length}\nChild Rolls: ${childRolls.length}\nScan Events: ${scanEvents.length}`);
+        
+        console.log('Export completed successfully');
+    } catch (error) {
+        console.error('Error exporting to Excel:', error);
+        alert(`✗ Failed to export data.\n\nError: ${error.message}\n\nPlease check the console for details.`);
+        
+        // Restore original content on error
+        const container = document.getElementById('inventoryContainer');
+        if (container) {
+            loadInventory().catch(err => {
+                console.error('Error reloading inventory after export failure:', err);
+            });
+        }
+    }
 }
 
 

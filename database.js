@@ -246,9 +246,23 @@ const DB = {
         async createBatch(masterRollQR, widths, jobId = null) {
             try {
                 const db = DB._getDB();
+                
+                // Check if child rolls already exist for this master roll
+                const existing = await db.collection('childRolls')
+                    .where('masterRollQR', '==', masterRollQR)
+                    .get();
+                
+                if (!existing.empty) {
+                    console.warn(`Child rolls already exist for master roll ${masterRollQR}. Found ${existing.size} existing rolls.`);
+                    throw new Error(`This master roll has already been slit. ${existing.size} child rolls already exist.`);
+                }
+                
                 const batch = db.batch();
                 const timestamp = Date.now();
+                const randomSuffix = Math.random().toString(36).substring(2, 9); // Add randomness to prevent collisions
                 const newRolls = [];
+                
+                console.log(`Creating ${widths.length} child rolls for master roll ${masterRollQR}`);
                 
                 widths.forEach((width, index) => {
                     const rollData = {
@@ -258,13 +272,14 @@ const DB = {
                         jobId: jobId || `job-${timestamp}`,
                         createdAt: firebase.firestore.FieldValue.serverTimestamp()
                     };
-                    const docRef = db.collection('childRolls').doc(`${timestamp}-${index}`);
+                    // Use more unique ID: timestamp + random + index
+                    const docRef = db.collection('childRolls').doc(`${timestamp}-${randomSuffix}-${index}`);
                     batch.set(docRef, rollData);
                     newRolls.push({ id: docRef.id, ...rollData });
                 });
                 
                 await batch.commit();
-                console.log(`✓ Created ${newRolls.length} child rolls`);
+                console.log(`✓ Created ${newRolls.length} child rolls successfully`);
                 return newRolls;
             } catch (error) {
                 console.error('Error creating child rolls:', error);
@@ -365,6 +380,7 @@ const DB = {
                     qrValue: data.qrValue,
                     lotNumber: data.lotNumber,
                     stockNumber: data.stockNumber,
+                    qrUrl: data.qrUrl || null,  // Store QR code URL for printing
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 };
                 

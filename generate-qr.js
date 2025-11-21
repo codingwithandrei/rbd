@@ -102,9 +102,16 @@ async function generateQRCodes() {
         // Create QR value (lot-stock format)
         const qrValue = `${data.lotNumber}-${data.stockNumber}`;
         
-        // Get base URL - always use full URL for QR codes (needed for phone scanning)
-        const baseUrl = window.location.origin || 'http://localhost:8000';
-        const isLocalhost = baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1') || baseUrl.includes('192.168.');
+        // Get base URL - use production domain for QR codes
+        // IMPORTANT: Update this to your actual Vercel deployment URL
+        const productionUrl = 'https://rbd-weld.vercel.app'; // Change this to your actual domain
+        const isLocalhost = window.location.hostname === 'localhost' || 
+                           window.location.hostname === '127.0.0.1' || 
+                           window.location.hostname.includes('192.168.');
+        
+        // Use production URL for QR codes (so they always work when scanned)
+        // Only use localhost if actually running locally
+        const baseUrl = isLocalhost ? window.location.origin : productionUrl;
         
         // Create QR code data - always use full URL so it works when scanned from phone
         const qrData = `${baseUrl}/index.html?qr=${encodeURIComponent(qrValue)}&lot=${encodeURIComponent(data.lotNumber)}&stock=${encodeURIComponent(data.stockNumber)}`;
@@ -174,7 +181,8 @@ async function generateQRCodes() {
                         const saved = await DB.qrCodes.create({
                             qrValue: qr.qrValue,
                             lotNumber: qr.lotNumber,
-                            stockNumber: qr.stockNumber
+                            stockNumber: qr.stockNumber,
+                            qrUrl: qr.qrData  // Save the full URL for printing
                         });
                         
                         // Verify it was saved

@@ -5,6 +5,7 @@ let currentRollIndex = 0;
 let qrValue = null; // Store QR value from URL
 let jobNumber = null; // Store job number
 let masterRoll = null; // Store master roll data
+let isSubmitting = false; // Guard against double submission
 
 const PRESET_SIZES = [225, 241, 325];
 const MAX_TOTAL_SIZE = 1300;
@@ -296,6 +297,12 @@ function goBackToStep1() {
 }
 
 async function submitJobAssignment() {
+    // Prevent double submission
+    if (isSubmitting) {
+        console.log('Submission already in progress, ignoring duplicate call');
+        return;
+    }
+
     // Validate all rolls have sizes
     const incompleteRolls = rolls.filter(roll => !roll.size);
     if (incompleteRolls.length > 0) {
@@ -321,9 +328,30 @@ async function submitJobAssignment() {
         return;
     }
 
+    // Set submitting flag and disable button
+    isSubmitting = true;
+    const submitButton = document.querySelector('button[onclick="submitJobAssignment()"]');
+    if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.textContent = 'Submitting...';
+    }
     const finalQRValue = qrValue;
     
     try {
+        // Check if child rolls already exist for this master roll
+        const existingChildRolls = await DB.childRolls.getByMasterQR(finalQRValue);
+        if (existingChildRolls.length > 0) {
+            console.warn('Child rolls already exist for this master roll:', existingChildRolls.length);
+            isSubmitting = false;
+            if (submitButton) {
+                submitButton.disabled = false;
+                submitButton.textContent = 'Submit Job Assignment';
+            }
+            alert(`This master roll has already been slit with ${existingChildRolls.length} child rolls. Redirecting to roll selection...`);
+            navigateTo(`select-roll.html?qr=${encodeURIComponent(finalQRValue)}`);
+            return;
+        }
+
         // Verify master roll exists
         if (!masterRoll) {
             masterRoll = await DB.masterRolls.getByQR(finalQRValue);
@@ -338,6 +366,11 @@ async function submitJobAssignment() {
                         lotNumber: qrCode.lotNumber
                     });
                 } else {
+                    isSubmitting = false;
+                    if (submitButton) {
+                        submitButton.disabled = false;
+                        submitButton.textContent = 'Submit Job Assignment';
+                    }
                     alert('Master roll not found. Please register the master roll first.');
                     navigateTo('index.html');
                     return;
@@ -347,9 +380,32 @@ async function submitJobAssignment() {
 
         // Extract widths from rolls
         const widths = rolls.map(roll => roll.size);
+        
+        // Validate we have the correct number of widths
+        if (widths.length !== numberOfRolls) {
+            console.error('Width count mismatch:', {
+                expected: numberOfRolls,
+                actual: widths.length,
+                rolls: rolls
+            });
+            isSubmitting = false;
+            if (submitButton) {
+                submitButton.disabled = false;
+                submitButton.textContent = 'Submit Job Assignment';
+            }
+            alert(`Error: Expected ${numberOfRolls} roll sizes but found ${widths.length}. Please try again.`);
+            return;
+        }
 
         // Use the entered job number as job ID
         const jobId = jobNumber || `job-${Date.now()}`;
+
+        console.log('Creating child rolls:', {
+            masterRollQR: finalQRValue,
+            widths: widths,
+            count: widths.length,
+            jobId: jobId
+        });
 
         // Create child rolls (Stage 2) with job ID
         await DB.childRolls.createBatch(finalQRValue, widths, jobId);
@@ -432,8 +488,17 @@ async function submitJobAssignment() {
         // Log final state for debugging
         const snapshot = await DB.getSnapshot();
         console.log('Final database state:', snapshot);
+        
+        // Reset submitting flag on success
+        isSubmitting = false;
     } catch (error) {
         console.error('Error submitting job assignment:', error);
+        isSubmitting = false; // Reset flag on error
+        const submitButton = document.querySelector('button[onclick="submitJobAssignment()"]');
+        if (submitButton) {
+            submitButton.disabled = false;
+            submitButton.textContent = 'Submit Job Assignment';
+        }
         alert('ERROR: Failed to save job assignment. ' + error.message);
     }
 }

@@ -15,14 +15,50 @@
 
         <main class="main-content">
             <div class="form-container">
-                <div id="rollsListContainer">
-                    <!-- Available rolls will be displayed here -->
+                <!-- Step 0: Job Number Entry -->
+                <div id="step0" class="step">
+                    <h3 class="form-title" style="font-size: 1.5rem; margin-bottom: 20px;">Enter Job Number</h3>
+                    <p class="form-subtitle" style="margin-bottom: 24px;">Enter the job number for the roll you're about to select</p>
+                    
+                    <div class="form-group">
+                        <label for="jobNumber" class="form-label">Job Number *</label>
+                        <input 
+                            type="text" 
+                            id="jobNumber" 
+                            name="jobNumber" 
+                            class="form-input" 
+                            placeholder="Enter job number"
+                            required
+                        >
+                    </div>
+
+                    <div class="button-group">
+                        <button type="button" class="btn btn-secondary" onclick="navigateTo('index.html')">Back to Home</button>
+                        <button type="button" class="btn btn-primary" onclick="proceedToRollSelection()">Next</button>
+                    </div>
                 </div>
 
-                <div id="messageContainer"></div>
+                <!-- Step 1: Roll Selection -->
+                <div id="step1" class="step" style="display: none;">
+                    <div id="rollsListContainer">
+                        <!-- Available rolls will be displayed here -->
+                    </div>
 
-                <div class="button-group" style="margin-top: 30px;">
-                    <button type="button" class="btn btn-secondary" onclick="navigateTo('index.html')">Back to Home</button>
+                    <div id="messageContainer"></div>
+
+                    <div class="button-group" style="margin-top: 30px;">
+                        <button type="button" class="btn btn-secondary" onclick="goBackToJobNumber()">Back</button>
+                        <button type="button" class="btn btn-secondary" onclick="navigateTo('index.html')">Back to Home</button>
+                    </div>
+                </div>
+
+                <!-- Step 2: Success Message -->
+                <div id="step2" class="step" style="display: none;">
+                    <div id="successContainer"></div>
+                    <div class="button-group" style="margin-top: 30px;">
+                        <button type="button" class="btn btn-primary" onclick="navigateTo('index.html')">Return to Home</button>
+                        <button type="button" class="btn btn-secondary" onclick="selectAnotherRoll()">Select Another Roll</button>
+                    </div>
                 </div>
             </div>
         </main>

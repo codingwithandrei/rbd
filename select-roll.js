@@ -2,6 +2,8 @@
 let qrValue = null;
 let allChildRolls = []; // Store all child rolls (available and used)
 let rollNumberMap = {}; // Map to maintain consistent roll numbers
+let jobNumber = null; // Store job number from step 0
+let selectedRollId = null; // Store selected roll ID
 
 document.addEventListener('DOMContentLoaded', async function() {
     // Initialize database
@@ -35,8 +37,10 @@ document.addEventListener('DOMContentLoaded', async function() {
         </small>
     `;
 
-    // Load all rolls (available and used)
-    await loadAllRolls();
+    // Start with step 0 (job number entry)
+    document.getElementById('step0').style.display = 'block';
+    document.getElementById('step1').style.display = 'none';
+    document.getElementById('step2').style.display = 'none';
 });
 
 async function loadAllRolls() {
@@ -130,6 +134,32 @@ async function loadAllRolls() {
     `;
 }
 
+async function proceedToRollSelection() {
+    const jobInput = document.getElementById('jobNumber');
+    const jobValue = jobInput.value.trim();
+
+    if (!jobValue) {
+        alert('Please enter a job number');
+        return;
+    }
+
+    jobNumber = jobValue;
+
+    // Hide step 0, show step 1
+    document.getElementById('step0').style.display = 'none';
+    document.getElementById('step1').style.display = 'block';
+
+    // Load all rolls
+    await loadAllRolls();
+}
+
+function goBackToJobNumber() {
+    document.getElementById('step1').style.display = 'none';
+    document.getElementById('step0').style.display = 'block';
+    document.getElementById('jobNumber').value = '';
+    jobNumber = null;
+}
+
 async function selectRoll(childRollId) {
     // Find the roll
     const roll = allChildRolls.find(r => r.id === childRollId);
@@ -143,55 +173,57 @@ async function selectRoll(childRollId) {
         return;
     }
 
-    const rollNumber = rollNumberMap[roll.id] || '?';
-    
-    // Prompt for job number
-    const jobNumber = prompt(`Enter Job Number for Roll ${rollNumber} (${roll.width}mm):`, '');
-    
-    if (jobNumber === null) {
-        // User cancelled
-        return;
-    }
-    
-    const trimmedJobNumber = jobNumber.trim();
-    if (!trimmedJobNumber) {
-        alert('Job number is required. Please enter a job number.');
+    // Store selected roll ID
+    selectedRollId = childRollId;
+
+    // Use the job number from step 0
+    if (!jobNumber) {
+        alert('Job number is required. Please go back and enter a job number.');
         return;
     }
 
     try {
         // Mark roll as used with job number
-        await DB.childRolls.markAsUsed(childRollId, trimmedJobNumber);
+        await DB.childRolls.markAsUsed(childRollId, jobNumber);
 
         // Log scan event
         await DB.scanEvents.create({
             qrValue: qrValue,
             action: 'roll_selected',
             childRollId: childRollId,
-            jobId: trimmedJobNumber
+            jobId: jobNumber
         });
 
-        // Show success message
-        const messageContainer = document.getElementById('messageContainer');
-        messageContainer.innerHTML = `
+        const rollNumber = rollNumberMap[roll.id] || '?';
+
+        // Show success message in step 2
+        const successContainer = document.getElementById('successContainer');
+        successContainer.innerHTML = `
             <div class="success-message">
                 <h3 style="margin-bottom: 12px;">Roll Marked as Used</h3>
                 <p><strong>Roll Number:</strong> ${rollNumber}</p>
                 <p><strong>Width:</strong> ${roll.width}mm</p>
-                <p><strong>Job Number:</strong> ${trimmedJobNumber}</p>
+                <p><strong>Job Number:</strong> ${jobNumber}</p>
                 <p><strong>Status:</strong> USED</p>
             </div>
         `;
 
-        // Reload all rolls (to show updated status)
-        setTimeout(async () => {
-            await loadAllRolls();
-            messageContainer.innerHTML = '';
-        }, 2000);
+        // Hide step 1, show step 2
+        document.getElementById('step1').style.display = 'none';
+        document.getElementById('step2').style.display = 'block';
     } catch (error) {
         console.error('Error marking roll as used:', error);
         showError('Failed to mark roll as used: ' + error.message);
     }
+}
+
+function selectAnotherRoll() {
+    // Reset and go back to step 0
+    document.getElementById('step2').style.display = 'none';
+    document.getElementById('step0').style.display = 'block';
+    document.getElementById('jobNumber').value = '';
+    jobNumber = null;
+    selectedRollId = null;
 }
 
 function showError(message) {

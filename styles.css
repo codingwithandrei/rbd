@@ -47,6 +47,29 @@ body {
     margin-bottom: 40px;
 }
 
+.header > div {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.header > div img {
+    max-width: 120px;
+    height: auto;
+}
+
+@media (max-width: 768px) {
+    .header > div img {
+        max-width: 80px;
+    }
+    
+    .header > div .logo {
+        font-size: 2rem;
+    }
+}
+
 .logo {
     font-size: 2.5rem;
     font-weight: 700;
