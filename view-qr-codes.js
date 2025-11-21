@@ -237,12 +237,12 @@ function printLabels() {
             }
             
             try {
-                // Generate QR code - sized to fit within 2in max height
-                // Using 300px which will scale down to fit the 2in max
+                // Generate QR code - sized smaller to prevent cutoff
+                // Using 250px which will scale down to fit the 1.3in max
                 new QRCode(qrElement, {
                     text: qrUrl,
-                    width: 300,
-                    height: 300,
+                    width: 250,
+                    height: 250,
                     colorDark: '#000000',
                     colorLight: '#ffffff',
                     correctLevel: QRCode.CorrectLevel.H
@@ -251,8 +251,8 @@ function printLabels() {
                 // Ensure QR code scales to fit and doesn't get cut off
                 const canvas = qrElement.querySelector('canvas');
                 if (canvas) {
-                    canvas.style.maxWidth = '2in';
-                    canvas.style.maxHeight = '2in';
+                    canvas.style.maxWidth = '1.3in';
+                    canvas.style.maxHeight = '1.3in';
                     canvas.style.width = 'auto';
                     canvas.style.height = 'auto';
                     canvas.style.objectFit = 'contain';
