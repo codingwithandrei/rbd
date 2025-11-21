@@ -2,6 +2,8 @@
 let currentView = 'stocks'; // 'stocks', 'lots', 'details'
 let selectedStockNumber = null;
 let selectedLotNumber = null;
+let searchQuery = '';
+let searchResults = null;
 
 document.addEventListener('DOMContentLoaded', async function() {
     // Ensure database is initialized
@@ -58,6 +60,12 @@ async function loadInventory() {
     }
     
     try {
+        // If there's an active search, show search results instead
+        if (searchQuery) {
+            await performSearch(searchQuery);
+            return;
+        }
+        
         if (currentView === 'stocks') {
             await displayStockGroups();
         } else if (currentView === 'lots') {
@@ -228,14 +236,10 @@ async function displayStockGroups() {
                                         <span class="stat-value" style="color: var(--gray-600);">${unregisteredCount}</span>
                                     </div>
                                     ` : ''}
-                                    <div class="stat-item">
-                                        <span class="stat-label">Registered:</span>
-                                        <span class="stat-value">${registeredCount}</span>
-                                    </div>
-                                    <div class="stat-item">
-                                        <span class="stat-label">Slit:</span>
-                                        <span class="stat-value">${slitCount}</span>
-                                    </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Registered:</span>
+                                    <span class="stat-value">${registeredCount}</span>
+                                </div>
                                 </div>
                             </div>
                             <div class="stock-card-footer">
@@ -264,6 +268,9 @@ async function displayStockGroups() {
 function selectStock(stockNumber) {
     selectedStockNumber = stockNumber;
     currentView = 'lots';
+    // Clear search when navigating to lots
+    searchQuery = '';
+    document.getElementById('searchInput').value = '';
     loadInventory().catch(error => {
         console.error('Error loading lots:', error);
     });
@@ -404,6 +411,9 @@ function selectLot(stockNumber, lotNumber) {
     selectedStockNumber = stockNumber;
     selectedLotNumber = lotNumber;
     currentView = 'details';
+    // Clear search when navigating to details
+    searchQuery = '';
+    document.getElementById('searchInput').value = '';
     loadInventory().catch(error => {
         console.error('Error loading lot details:', error);
     });
@@ -729,8 +739,221 @@ async function refreshInventory() {
     currentView = 'stocks';
     selectedStockNumber = null;
     selectedLotNumber = null;
+    searchQuery = '';
+    searchResults = null;
+    document.getElementById('searchInput').value = '';
     
     await loadInventory();
+}
+
+// Search functionality
+async function handleSearch(event) {
+    if (event.key === 'Enter' || event.type === 'click') {
+        const query = document.getElementById('searchInput').value.trim().toLowerCase();
+        searchQuery = query;
+        
+        if (!query) {
+            searchResults = null;
+            currentView = 'stocks';
+            selectedStockNumber = null;
+            selectedLotNumber = null;
+            await loadInventory();
+            return;
+        }
+        
+        // Perform search
+        await performSearch(query);
+    }
+}
+
+async function performSearch(query) {
+    const container = document.getElementById('inventoryContainer');
+    container.innerHTML = '<p style="text-align: center; padding: 20px;">Searching...</p>';
+    
+    try {
+        // Get all data
+        const masterRolls = await DB.masterRolls.getAll();
+        const qrCodes = await DB.qrCodes.getAll();
+        const childRolls = await DB.childRolls.getAll();
+        
+        // Search results
+        const matchingMasterRolls = [];
+        const matchingQRCodes = [];
+        const matchingJobs = new Set();
+        const matchingJobRolls = new Map(); // Map job ID to master roll QR values
+        
+        // Search master rolls and QR codes by stock/lot number
+        [...masterRolls, ...qrCodes].forEach(item => {
+            const stockMatch = item.stockNumber && item.stockNumber.toLowerCase().includes(query);
+            const lotMatch = item.lotNumber && item.lotNumber.toLowerCase().includes(query);
+            
+            if (stockMatch || lotMatch) {
+                if (item.status !== undefined) {
+                    matchingMasterRolls.push(item);
+                } else {
+                    matchingQRCodes.push(item);
+                }
+            }
+        });
+        
+        // Search child rolls by job number
+        childRolls.forEach(roll => {
+            const jobId = roll.jobId || roll.usedJobId || '';
+            if (jobId.toLowerCase().includes(query)) {
+                matchingJobs.add(jobId);
+                // Find the master roll for this child roll
+                const masterRoll = masterRolls.find(mr => mr.qrValue === roll.masterRollQR);
+                if (masterRoll) {
+                    if (!matchingJobRolls.has(jobId)) {
+                        matchingJobRolls.set(jobId, []);
+                    }
+                    matchingJobRolls.get(jobId).push(masterRoll);
+                    // Add to matching master rolls if not already there
+                    if (!matchingMasterRolls.find(mr => mr.qrValue === masterRoll.qrValue)) {
+                        matchingMasterRolls.push(masterRoll);
+                    }
+                }
+            }
+        });
+        
+        // Combine and deduplicate results
+        const allMatches = {};
+        [...matchingMasterRolls, ...matchingQRCodes].forEach(item => {
+            const key = item.qrValue || `${item.lotNumber}-${item.stockNumber}`;
+            if (!allMatches[key]) {
+                allMatches[key] = item;
+            }
+        });
+        
+        const results = Object.values(allMatches);
+        
+        // Display results
+        if (results.length === 0 && matchingJobs.size === 0) {
+            container.innerHTML = `
+                <div class="error-message">
+                    <h3 style="margin-bottom: 12px;">No Results Found</h3>
+                    <p>No matches found for "${query}"</p>
+                    <p style="margin-top: 12px; font-size: 0.9rem;">Try searching by:</p>
+                    <ul style="margin-top: 8px; padding-left: 20px; font-size: 0.9rem;">
+                        <li>Stock Number</li>
+                        <li>Lot Number</li>
+                        <li>Job Number</li>
+                    </ul>
+                </div>
+                <div class="button-group" style="margin-top: 20px;">
+                    <button class="btn btn-secondary" onclick="clearSearch()">Clear Search</button>
+                </div>
+            `;
+            return;
+        }
+        
+        // Group results by stock number
+        const stockGroups = {};
+        results.forEach(item => {
+            const stock = item.stockNumber || 'Unknown';
+            if (!stockGroups[stock]) {
+                stockGroups[stock] = [];
+            }
+            stockGroups[stock].push(item);
+        });
+        
+        // Display search results
+        container.innerHTML = `
+            <div style="margin-bottom: 20px;">
+                <button class="btn btn-secondary btn-small" onclick="clearSearch()" style="margin-bottom: 16px;">
+                    ← Clear Search
+                </button>
+                <h3 class="form-title" style="font-size: 1.5rem; margin-bottom: 8px;">
+                    Search Results for "${query}"
+                </h3>
+                <p class="form-subtitle" style="margin-bottom: 24px;">
+                    Found ${results.length} ${results.length === 1 ? 'match' : 'matches'}${matchingJobs.size > 0 ? ` across ${matchingJobs.size} ${matchingJobs.size === 1 ? 'job' : 'jobs'}` : ''}
+                </p>
+            </div>
+            ${Object.keys(stockGroups).length > 0 ? `
+            <div class="stock-groups-container">
+                ${Object.keys(stockGroups).sort().map(stockNumber => {
+                    const lots = stockGroups[stockNumber];
+                    const totalLots = lots.length;
+                    const registeredCount = lots.filter(r => r.status && r.status === 'registered').length;
+                    const unregisteredCount = lots.filter(r => !r.status || r.status === 'unregistered').length;
+                    
+                    return `
+                        <div class="stock-group-card" onclick="selectStock('${stockNumber}')">
+                            <div class="stock-card-header">
+                                <h4>Stock Number: ${stockNumber}</h4>
+                                <div class="stock-badge">${totalLots} ${totalLots === 1 ? 'Lot' : 'Lots'}</div>
+                            </div>
+                            <div class="stock-card-body">
+                                <div class="stock-stats">
+                                    <div class="stat-item">
+                                        <span class="stat-label">Total Lots:</span>
+                                        <span class="stat-value">${totalLots}</span>
+                                    </div>
+                                    ${unregisteredCount > 0 ? `
+                                    <div class="stat-item">
+                                        <span class="stat-label">Unregistered:</span>
+                                        <span class="stat-value" style="color: var(--gray-600);">${unregisteredCount}</span>
+                                    </div>
+                                    ` : ''}
+                                    <div class="stat-item">
+                                        <span class="stat-label">Registered:</span>
+                                        <span class="stat-value">${registeredCount}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="stock-card-footer">
+                                <button class="btn btn-primary btn-block" onclick="event.stopPropagation(); selectStock('${stockNumber}');">
+                                    View Lots
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+            ` : ''}
+            ${matchingJobs.size > 0 ? `
+                <div style="margin-top: 24px; padding-top: 24px; border-top: 2px solid var(--gray-200);">
+                    <h4 style="color: var(--gray-800); margin-bottom: 12px; font-weight: 600;">Matching Job Numbers:</h4>
+                    <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px;">
+                        ${Array.from(matchingJobs).map(jobId => `
+                            <span style="padding: 8px 12px; background: var(--primary-blue); color: white; border-radius: 6px; font-weight: 500;">
+                                ${jobId}
+                            </span>
+                        `).join('')}
+                    </div>
+                    <p style="font-size: 0.9rem; color: var(--gray-600);">
+                        Click on a stock number above to see the lots associated with these jobs.
+                    </p>
+                </div>
+            ` : ''}
+        `;
+        
+    } catch (error) {
+        console.error('Error performing search:', error);
+        container.innerHTML = `
+            <div class="error-message">
+                <h3 style="margin-bottom: 12px;">Search Error</h3>
+                <p>Failed to perform search. Please try again.</p>
+                <p style="margin-top: 12px; font-size: 0.9rem; color: var(--gray-600);">Error: ${error.message}</p>
+            </div>
+            <div class="button-group" style="margin-top: 20px;">
+                <button class="btn btn-secondary" onclick="clearSearch()">Clear Search</button>
+            </div>
+        `;
+    }
+}
+
+function clearSearch() {
+    document.getElementById('searchInput').value = '';
+    searchQuery = '';
+    searchResults = null;
+    currentView = 'stocks';
+    selectedStockNumber = null;
+    selectedLotNumber = null;
+    loadInventory().catch(error => {
+        console.error('Error loading inventory:', error);
+    });
 }
 
 

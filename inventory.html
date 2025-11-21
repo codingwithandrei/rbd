@@ -15,6 +15,25 @@
 
         <main class="main-content">
             <div class="form-container">
+                <div style="margin-bottom: 24px;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="searchInput" class="form-label" style="font-weight: 600; margin-bottom: 8px;">Search Inventory</label>
+                        <div style="display: flex; gap: 8px;">
+                            <input 
+                                type="text" 
+                                id="searchInput" 
+                                class="form-input" 
+                                placeholder="Search by Stock Number, Lot Number, or Job Number..."
+                                style="flex: 1;"
+                                onkeyup="handleSearch(event)"
+                            >
+                            <button type="button" class="btn btn-secondary" onclick="clearSearch()">Clear</button>
+                        </div>
+                        <p style="font-size: 0.85rem; color: var(--gray-600); margin-top: 8px;">
+                            Search across all stock numbers, lot numbers, and job numbers
+                        </p>
+                    </div>
+                </div>
                 <div id="inventoryContainer">
                     <!-- Inventory will be displayed here -->
                 </div>
