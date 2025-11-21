@@ -237,23 +237,25 @@ function printLabels() {
             }
             
             try {
-                // Generate QR code - size will be controlled by CSS to fit page
-                // Using larger base size that will scale down if needed
+                // Generate QR code - sized to fit within 2in max height
+                // Using 300px which will scale down to fit the 2in max
                 new QRCode(qrElement, {
                     text: qrUrl,
-                    width: 400,
-                    height: 400,
+                    width: 300,
+                    height: 300,
                     colorDark: '#000000',
                     colorLight: '#ffffff',
                     correctLevel: QRCode.CorrectLevel.H
                 });
                 
-                // Ensure QR code scales to fit
+                // Ensure QR code scales to fit and doesn't get cut off
                 const canvas = qrElement.querySelector('canvas');
                 if (canvas) {
-                    canvas.style.maxWidth = '100%';
-                    canvas.style.height = 'auto';
+                    canvas.style.maxWidth = '2in';
+                    canvas.style.maxHeight = '2in';
                     canvas.style.width = 'auto';
+                    canvas.style.height = 'auto';
+                    canvas.style.objectFit = 'contain';
                 }
             } catch (error) {
                 console.error('Error generating print QR code:', error);
