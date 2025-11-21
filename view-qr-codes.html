@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>View QR Codes - RBD App</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1 class="logo">View QR Codes</h1>
+            <p class="subtitle">View, export, and print all generated QR codes</p>
+        </header>
+
+        <main class="main-content">
+            <div class="form-container">
+                <!-- Search Bar -->
+                <div style="margin-bottom: 24px;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="searchInput" class="form-label" style="font-weight: 600; margin-bottom: 8px;">Search QR Codes</label>
+                        <div style="display: flex; gap: 8px;">
+                            <input 
+                                type="text" 
+                                id="searchInput" 
+                                class="form-input" 
+                                placeholder="Search by Stock Number or Lot Number..."
+                                style="flex: 1;"
+                                onkeyup="handleSearch(event)"
+                            >
+                            <button type="button" class="btn btn-secondary" onclick="clearSearch()">Clear</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="button-group" style="margin-bottom: 24px;">
+                    <button type="button" class="btn btn-yellow" onclick="exportLabelsCSV()">Export Labels (CSV)</button>
+                    <button type="button" class="btn btn-yellow" onclick="printLabels()">Print Labels</button>
+                    <button type="button" class="btn btn-secondary" onclick="refreshQRCodes()">Refresh</button>
+                </div>
+
+                <!-- Loading Message -->
+                <div id="loadingMessage" class="info-message" style="display: none;">
+                    <p>Loading QR codes...</p>
+                </div>
+
+                <!-- QR Codes Display -->
+                <div id="qrCodesContainer" class="qr-codes-grid">
+                    <!-- QR codes will be displayed here -->
+                </div>
+
+                <!-- Empty State -->
+                <div id="emptyState" style="display: none;">
+                    <div class="info-message">
+                        <h3 style="margin-bottom: 12px;">No QR Codes Found</h3>
+                        <p>No QR codes have been generated yet. Generate QR codes to get started.</p>
+                    </div>
+                </div>
+
+                <div class="button-group" style="margin-top: 30px;">
+                    <button type="button" class="btn btn-primary" onclick="navigateTo('index.html')">Return to Home</button>
+                    <button type="button" class="btn btn-secondary" onclick="navigateTo('generate-qr.html')">Generate New QR Codes</button>
+                </div>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <img src="rbd-logo.png.png" alt="RBD Logo" style="max-width: 80px; height: auto; margin-bottom: 8px; display: block; margin-left: auto; margin-right: auto;">
+            <p>&copy; 2025 RBD Packaging</p>
+        </footer>
+    </div>
+
+    <!-- Print View (Hidden) -->
+    <div id="printView" style="display: none;"></div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="firebase-config.js"></script>
+    <script src="database.js"></script>
+    <script src="app.js"></script>
+    <script>
+        // Ensure database is initialized before loading QR codes
+        document.addEventListener('DOMContentLoaded', async function() {
+            if (typeof DB !== 'undefined') {
+                try {
+                    await DB.init();
+                } catch (error) {
+                    console.error('Failed to initialize database:', error);
+                }
+            }
+        });
+    </script>
+    <script src="view-qr-codes.js"></script>
+</body>
+</html>
+
