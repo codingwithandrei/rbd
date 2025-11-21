@@ -207,10 +207,12 @@ function printLabels() {
         const printView = document.getElementById('printView');
         printView.innerHTML = '';
 
-        // Create print-friendly layout
+        // Create print-friendly layout - one label per page
         codesToPrint.forEach((qr, index) => {
             const labelDiv = document.createElement('div');
             labelDiv.className = 'label-print-item';
+            labelDiv.style.width = '100%';
+            labelDiv.style.height = '100vh';
             labelDiv.innerHTML = `
                 <div class="label-qr-code" id="print-qr-${index}"></div>
                 <div class="label-info">
@@ -236,15 +238,24 @@ function printLabels() {
             }
             
             try {
-                // Make QR code larger for print - will scale with page
+                // Generate QR code - size will be controlled by CSS to fit page
+                // Using larger base size that will scale down if needed
                 new QRCode(qrElement, {
                     text: qrUrl,
-                    width: 300,
-                    height: 300,
+                    width: 400,
+                    height: 400,
                     colorDark: '#000000',
                     colorLight: '#ffffff',
                     correctLevel: QRCode.CorrectLevel.H
                 });
+                
+                // Ensure QR code scales to fit
+                const canvas = qrElement.querySelector('canvas');
+                if (canvas) {
+                    canvas.style.maxWidth = '100%';
+                    canvas.style.height = 'auto';
+                    canvas.style.width = 'auto';
+                }
             } catch (error) {
                 console.error('Error generating print QR code:', error);
                 qrElement.innerHTML = '<p>QR Error</p>';
