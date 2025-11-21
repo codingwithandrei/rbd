@@ -111,98 +111,113 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
 });
 
-async function proceedToNumberOfRolls() {
-    try {
-        const jobInput = document.getElementById('jobNumber');
-        const jobValue = jobInput.value.trim();
-
-        if (!jobValue) {
-            alert('Please enter a job number');
-            return;
-        }
-
-        // VALIDATION: If in manual mode (no QR code), verify lot/stock match existing QR code
-        if (!qrValue) {
-            const lotNumber = document.getElementById('lotNumber').value.trim();
-            const stockNumber = document.getElementById('stockNumber').value.trim();
-            
-            console.log('🔍 Manual mode validation - checking inputs:', {
-                lotNumber: lotNumber,
-                stockNumber: stockNumber,
-                qrValue: qrValue
-            });
-            
-            if (!lotNumber || !stockNumber) {
-                alert('Both lot number and stock number are required.');
-                return;
-            }
-            
-            // Ensure database is initialized
-            if (!DB || !DB.qrCodes) {
-                console.error('❌ Database not initialized');
-                alert('ERROR: Database not initialized. Please refresh the page and try again.');
-                return;
-            }
-            
-            const finalQRValue = `${lotNumber}-${stockNumber}`;
-            console.log('🔍 Validating QR code before proceeding:', {
-                finalQRValue: finalQRValue,
-                lotNumber: lotNumber,
-                stockNumber: stockNumber
-            });
-            
-            // Check if QR code exists in database - BLOCKING VALIDATION
-            let qrCodeInDB = null;
-            try {
-                qrCodeInDB = await DB.qrCodes.getByValue(finalQRValue);
-                console.log('🔍 QR code lookup result:', qrCodeInDB);
-            } catch (dbError) {
-                console.error('❌ Database query error:', dbError);
-                alert(`ERROR: Database query failed. ${dbError.message}\n\nPlease check the console and try again.`);
-                return;
-            }
-            
-            // CRITICAL: If no QR code found, BLOCK progression
-            if (!qrCodeInDB || qrCodeInDB === null) {
-                console.error('❌ Validation failed: QR code not found in database');
-                alert(`ERROR: QR code not found in database.\n\nStock: ${stockNumber}\nLot: ${lotNumber}\nQR Value: ${finalQRValue}\n\nPlease generate this QR code first using "Generate QR Codes".`);
-                return; // BLOCK - do not proceed
-            }
-            
-            // Verify that entered lot/stock match the QR code in database (case-sensitive comparison)
-            const lotMatch = String(qrCodeInDB.lotNumber).trim() === String(lotNumber).trim();
-            const stockMatch = String(qrCodeInDB.stockNumber).trim() === String(stockNumber).trim();
-            
-            console.log('🔍 Comparing values:', {
-                entered: { lotNumber: String(lotNumber).trim(), stockNumber: String(stockNumber).trim() },
-                inDB: { lotNumber: String(qrCodeInDB.lotNumber).trim(), stockNumber: String(qrCodeInDB.stockNumber).trim() },
-                lotMatch: lotMatch,
-                stockMatch: stockMatch
-            });
-            
-            // CRITICAL: If values don't match, BLOCK progression
-            if (!lotMatch || !stockMatch) {
-                console.error('❌ Validation failed: Lot/Stock mismatch');
-                alert(`ERROR: Lot/Stock mismatch.\n\nEntered: Stock "${stockNumber}", Lot "${lotNumber}"\n\nQR Code in database: Stock "${qrCodeInDB.stockNumber}", Lot "${qrCodeInDB.lotNumber}"\n\nPlease enter the correct values that match the generated QR code.`);
-                return; // BLOCK - do not proceed
-            }
-            
-            console.log('✅ Validation passed, QR code found and matches:', qrCodeInDB);
-        } else {
-            console.log('✅ QR code provided via scan, skipping manual validation');
-        }
-
-        // Only proceed if validation passed (or QR code was scanned)
-        jobNumber = jobValue;
-
-        // Hide step 0, show step 1
-        document.getElementById('step0').style.display = 'none';
-        document.getElementById('step1').style.display = 'block';
-    } catch (error) {
-        console.error('❌ Error in proceedToNumberOfRolls:', error);
-        console.error('Error stack:', error.stack);
-        alert(`ERROR: Validation failed. ${error.message}\n\nPlease check the console for details.`);
+// Wrapper function to handle async validation properly
+async function handleProceedToNumberOfRolls() {
+    const nextButton = document.getElementById('nextButtonStep0');
+    if (nextButton) {
+        nextButton.disabled = true;
+        nextButton.textContent = 'Validating...';
     }
+    
+    try {
+        await proceedToNumberOfRolls();
+    } catch (error) {
+        console.error('❌ Error in handleProceedToNumberOfRolls:', error);
+        alert(`ERROR: Validation failed. ${error.message}\n\nPlease check the console for details.`);
+    } finally {
+        if (nextButton) {
+            nextButton.disabled = false;
+            nextButton.textContent = 'Next';
+        }
+    }
+}
+
+async function proceedToNumberOfRolls() {
+    const jobInput = document.getElementById('jobNumber');
+    const jobValue = jobInput.value.trim();
+
+    if (!jobValue) {
+        alert('Please enter a job number');
+        throw new Error('Job number is required');
+    }
+
+    // VALIDATION: If in manual mode (no QR code), verify lot/stock match existing QR code
+    if (!qrValue) {
+        const lotNumber = document.getElementById('lotNumber').value.trim();
+        const stockNumber = document.getElementById('stockNumber').value.trim();
+        
+        console.log('🔍 Manual mode validation - checking inputs:', {
+            lotNumber: lotNumber,
+            stockNumber: stockNumber,
+            qrValue: qrValue
+        });
+        
+        if (!lotNumber || !stockNumber) {
+            alert('Both lot number and stock number are required.');
+            throw new Error('Lot and stock numbers are required');
+        }
+        
+        // Ensure database is initialized
+        if (!DB || !DB.qrCodes) {
+            console.error('❌ Database not initialized');
+            alert('ERROR: Database not initialized. Please refresh the page and try again.');
+            throw new Error('Database not initialized');
+        }
+        
+        const finalQRValue = `${lotNumber}-${stockNumber}`;
+        console.log('🔍 Validating QR code before proceeding:', {
+            finalQRValue: finalQRValue,
+            lotNumber: lotNumber,
+            stockNumber: stockNumber
+        });
+        
+        // Check if QR code exists in database - BLOCKING VALIDATION
+        let qrCodeInDB = null;
+        try {
+            qrCodeInDB = await DB.qrCodes.getByValue(finalQRValue);
+            console.log('🔍 QR code lookup result:', qrCodeInDB);
+        } catch (dbError) {
+            console.error('❌ Database query error:', dbError);
+            alert(`ERROR: Database query failed. ${dbError.message}\n\nPlease check the console and try again.`);
+            throw new Error('Database query failed: ' + dbError.message);
+        }
+        
+        // CRITICAL: If no QR code found, BLOCK progression
+        if (!qrCodeInDB || qrCodeInDB === null) {
+            console.error('❌ Validation failed: QR code not found in database');
+            alert(`ERROR: QR code not found in database.\n\nStock: ${stockNumber}\nLot: ${lotNumber}\nQR Value: ${finalQRValue}\n\nPlease generate this QR code first using "Generate QR Codes".`);
+            throw new Error('QR code not found in database');
+        }
+        
+        // Verify that entered lot/stock match the QR code in database (case-sensitive comparison)
+        const lotMatch = String(qrCodeInDB.lotNumber).trim() === String(lotNumber).trim();
+        const stockMatch = String(qrCodeInDB.stockNumber).trim() === String(stockNumber).trim();
+        
+        console.log('🔍 Comparing values:', {
+            entered: { lotNumber: String(lotNumber).trim(), stockNumber: String(stockNumber).trim() },
+            inDB: { lotNumber: String(qrCodeInDB.lotNumber).trim(), stockNumber: String(qrCodeInDB.stockNumber).trim() },
+            lotMatch: lotMatch,
+            stockMatch: stockMatch
+        });
+        
+        // CRITICAL: If values don't match, BLOCK progression
+        if (!lotMatch || !stockMatch) {
+            console.error('❌ Validation failed: Lot/Stock mismatch');
+            alert(`ERROR: Lot/Stock mismatch.\n\nEntered: Stock "${stockNumber}", Lot "${lotNumber}"\n\nQR Code in database: Stock "${qrCodeInDB.stockNumber}", Lot "${qrCodeInDB.lotNumber}"\n\nPlease enter the correct values that match the generated QR code.`);
+            throw new Error('Lot/Stock mismatch');
+        }
+        
+        console.log('✅ Validation passed, QR code found and matches:', qrCodeInDB);
+    } else {
+        console.log('✅ QR code provided via scan, skipping manual validation');
+    }
+
+    // Only proceed if validation passed (or QR code was scanned)
+    jobNumber = jobValue;
+
+    // Hide step 0, show step 1
+    document.getElementById('step0').style.display = 'none';
+    document.getElementById('step1').style.display = 'block';
 }
 
 function proceedToRollSizes() {

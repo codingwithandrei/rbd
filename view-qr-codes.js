@@ -1,4 +1,4 @@
-// View QR Codes functionality
+// Print QR Codes functionality
 let allQRCodes = [];
 let filteredQRCodes = [];
 let searchQuery = '';
