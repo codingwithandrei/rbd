@@ -353,11 +353,19 @@ async function submitJobAssignment() {
         return;
     }
 
-    // QR code is required - verify it exists
-    if (!qrValue) {
-        alert('QR code is required. Please scan a QR code first.');
-        navigateTo('index.html');
+    // Get lot and stock numbers (from QR code or manual entry)
+    const lotNumber = document.getElementById('lotNumber').value.trim();
+    const stockNumber = document.getElementById('stockNumber').value.trim();
+    
+    if (!lotNumber || !stockNumber) {
+        alert('Both lot number and stock number are required.');
         return;
+    }
+    
+    // If no QR value, construct it from lot-stock format
+    let finalQRValue = qrValue;
+    if (!finalQRValue) {
+        finalQRValue = `${lotNumber}-${stockNumber}`;
     }
 
     // Set submitting flag and disable button
@@ -367,7 +375,6 @@ async function submitJobAssignment() {
         submitButton.disabled = true;
         submitButton.textContent = 'Submitting...';
     }
-    const finalQRValue = qrValue;
     
     try {
         // Check if child rolls already exist for this master roll
