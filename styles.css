@@ -1047,14 +1047,19 @@ body {
     }
     
     .label-print-item {
-        display: inline-block;
+        display: block;
         width: 4in;
         height: 2in;
         border: 1px solid #000;
         padding: 10px;
-        margin: 5px;
+        margin: 0 auto;
+        page-break-after: always;
         page-break-inside: avoid;
         box-sizing: border-box;
+    }
+    
+    .label-print-item:last-child {
+        page-break-after: auto;
     }
     
     .label-qr-code {
