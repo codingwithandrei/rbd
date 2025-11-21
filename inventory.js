@@ -269,10 +269,10 @@ function selectStock(stockNumber) {
     });
 }
 
-function displayLotsForStock(stockNumber) {
+async function displayLotsForStock(stockNumber) {
     const container = document.getElementById('inventoryContainer');
-    const masterRolls = DB.masterRolls.getAll();
-    const qrCodes = DB.qrCodes.getAll();
+    const masterRolls = await DB.masterRolls.getAll();
+    const qrCodes = await DB.qrCodes.getAll();
     
     // Combine master rolls and QR codes
     const allItems = {};
