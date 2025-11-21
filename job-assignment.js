@@ -72,10 +72,42 @@ document.addEventListener('DOMContentLoaded', async function() {
             }
         }
     } else {
-        // No QR code - show error
-        alert('QR code is required. Please scan a QR code first.');
-        navigateTo('index.html');
-        return;
+        // No QR code - allow manual entry for editing
+        // Make lot and stock fields editable
+        const lotInput = document.getElementById('lotNumber');
+        const stockInput = document.getElementById('stockNumber');
+        
+        if (lotInput) {
+            lotInput.readOnly = false;
+            lotInput.style.backgroundColor = 'var(--white)';
+            lotInput.style.cursor = 'text';
+            lotInput.placeholder = 'Enter lot number';
+        }
+        
+        if (stockInput) {
+            stockInput.readOnly = false;
+            stockInput.style.backgroundColor = 'var(--white)';
+            stockInput.style.cursor = 'text';
+            stockInput.placeholder = 'Enter stock number';
+        }
+        
+        // Show info message for manual entry
+        const messageContainer = document.createElement('div');
+        messageContainer.id = 'manualEntryContainer';
+        messageContainer.style.marginBottom = '20px';
+        messageContainer.innerHTML = `
+            <div class="info-message" style="margin-bottom: 0;">
+                <p><strong>Manual Entry Mode</strong></p>
+                <p style="margin-top: 8px; font-size: 0.9rem;">Enter lot and stock numbers manually, or scan a QR code to auto-fill.</p>
+            </div>
+        `;
+        document.querySelector('.form-container').insertBefore(messageContainer, document.querySelector('#step0'));
+        
+        // Update header
+        const header = document.querySelector('.header .subtitle');
+        if (header) {
+            header.innerHTML = 'Split master roll into production rolls (Manual Entry)';
+        }
     }
 });
 
@@ -366,14 +398,25 @@ async function submitJobAssignment() {
                         lotNumber: qrCode.lotNumber
                     });
                 } else {
-                    isSubmitting = false;
-                    if (submitButton) {
-                        submitButton.disabled = false;
-                        submitButton.textContent = 'Submit Job Assignment';
-                    }
-                    alert('Master roll not found. Please register the master roll first.');
-                    navigateTo('index.html');
-                    return;
+                    // Manual entry - create QR code and master roll if they don't exist
+                    // First, create QR code record
+                    const newQRCode = await DB.qrCodes.create({
+                        qrValue: finalQRValue,
+                        stockNumber: stockNumber,
+                        lotNumber: lotNumber
+                    });
+                    
+                    // Then create master roll
+                    masterRoll = await DB.masterRolls.create({
+                        qrValue: finalQRValue,
+                        stockNumber: stockNumber,
+                        lotNumber: lotNumber
+                    });
+                    
+                    console.log('Created QR code and master roll from manual entry:', {
+                        qrCode: newQRCode,
+                        masterRoll: masterRoll
+                    });
                 }
             }
         }
