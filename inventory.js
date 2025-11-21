@@ -452,27 +452,37 @@ async function displayLotDetails(stockNumber, lotNumber) {
     }
 
     // Get child rolls (only if registered)
-    const childRolls = isUnregistered ? [] : DB.childRolls.getByMasterQR(masterRoll.qrValue);
+    const childRolls = isUnregistered ? [] : await DB.childRolls.getByMasterQR(masterRoll.qrValue);
     const availableRolls = childRolls.filter(r => r.status === 'AVAILABLE');
     const usedRolls = childRolls.filter(r => r.status === 'USED');
     
     // Get scan events for this QR
-    const scanEvents = DB.scanEvents.getAll().filter(e => e.qrValue === masterRoll.qrValue);
+    const allScanEvents = await DB.scanEvents.getAll();
+    const scanEvents = allScanEvents.filter(e => e.qrValue === masterRoll.qrValue);
     const slittingEvents = scanEvents.filter(e => e.action === 'slitting');
     const jobCount = slittingEvents.length;
     
-    // Group child rolls by job ID
+    // Group child rolls by job ID (from slitting) and usedJobId (from usage)
     const rollsByJob = {};
     childRolls.forEach(roll => {
-        const jobId = roll.jobId || 'unknown';
+        // Use usedJobId if available (when roll was used), otherwise use jobId (from slitting)
+        const jobId = roll.usedJobId || roll.jobId || 'unknown';
         if (!rollsByJob[jobId]) {
             rollsByJob[jobId] = [];
         }
         rollsByJob[jobId].push(roll);
     });
     
+    // Sort child rolls by creation time to maintain consistent numbering
+    childRolls.sort((a, b) => {
+        if (a.createdAt && b.createdAt) {
+            return new Date(a.createdAt) - new Date(b.createdAt);
+        }
+        return a.id.localeCompare(b.id);
+    });
+    
     // Create job information
-    const jobs = Object.keys(rollsByJob).map((jobId, index) => {
+    const jobs = Object.keys(rollsByJob).map((jobId) => {
         const jobRolls = rollsByJob[jobId];
         const slittingEvent = slittingEvents.find(e => {
             // Try to match by timestamp (within 5 seconds)
@@ -482,11 +492,13 @@ async function displayLotDetails(stockNumber, lotNumber) {
         });
         
         return {
-            jobNumber: `JOB-${index + 1}`,
+            jobNumber: jobId, // Use actual job ID
             jobId: jobId,
             timestamp: slittingEvent ? slittingEvent.timestamp : jobRolls[0].createdAt,
             childRolls: jobRolls,
-            rollCount: jobRolls.length
+            rollCount: jobRolls.length,
+            availableCount: jobRolls.filter(r => r.status === 'AVAILABLE').length,
+            usedCount: jobRolls.filter(r => r.status === 'USED').length
         };
     });
 
@@ -578,18 +590,37 @@ async function displayLotDetails(stockNumber, lotNumber) {
                         <span class="detail-value used">${usedRolls.length}</span>
                     </div>
                 </div>
-                ${jobCount > 0 ? `
+                ${jobs.length > 0 ? `
                     <div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid var(--gray-200);">
-                        <h5 style="color: var(--gray-800); margin-bottom: 12px; font-size: 1rem;">Job Details:</h5>
+                        <h5 style="color: var(--gray-800); margin-bottom: 16px; font-size: 1.1rem; font-weight: 600;">Job Details:</h5>
                         <div class="jobs-list">
                             ${jobs.map((job) => `
-                                <div class="job-item">
-                                    <div class="job-header">
-                                        <span class="job-number">${job.jobNumber}</span>
-                                        <span class="job-date">${new Date(job.timestamp).toLocaleString()}</span>
+                                <div class="job-item" style="margin-bottom: 16px; padding: 16px; background: var(--gray-50); border-radius: 8px; border: 2px solid var(--gray-200);">
+                                    <div class="job-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                        <span class="job-number" style="font-weight: 600; font-size: 1.1rem; color: var(--primary-blue);">Job: ${job.jobNumber}</span>
+                                        <span class="job-date" style="font-size: 0.9rem; color: var(--gray-600);">${new Date(job.timestamp).toLocaleString()}</span>
                                     </div>
-                                    <div class="job-body">
-                                        <span class="job-rolls">${job.rollCount} ${job.rollCount === 1 ? 'roll' : 'rolls'} created</span>
+                                    <div class="job-body" style="display: flex; gap: 16px; flex-wrap: wrap;">
+                                        <span class="job-rolls" style="font-weight: 500;">Total: ${job.rollCount} ${job.rollCount === 1 ? 'roll' : 'rolls'}</span>
+                                        <span class="job-available" style="color: var(--success-green); font-weight: 500;">Available: ${job.availableCount}</span>
+                                        <span class="job-used" style="color: var(--error-red); font-weight: 500;">Used: ${job.usedCount}</span>
+                                    </div>
+                                    <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--gray-200);">
+                                        <div style="font-size: 0.9rem; color: var(--gray-700); margin-bottom: 8px; font-weight: 500;">Individual Rolls:</div>
+                                        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                                            ${job.childRolls.map((roll, idx) => {
+                                                const rollNum = childRolls.findIndex(r => r.id === roll.id) + 1;
+                                                const isAvailable = roll.status === 'AVAILABLE';
+                                                const usedJob = roll.usedJobId || (roll.status === 'USED' && roll.jobId ? roll.jobId : null);
+                                                return `
+                                                    <div style="padding: 8px 12px; background: ${isAvailable ? '#d1fae5' : '#fee2e2'}; border-radius: 6px; border: 1px solid ${isAvailable ? '#10b981' : '#ef4444'};">
+                                                        <span style="font-weight: 600;">Roll ${rollNum}</span>
+                                                        <span style="margin-left: 8px; color: var(--gray-700);">${roll.width}mm</span>
+                                                        ${isAvailable ? '<span style="margin-left: 8px; color: #065f46; font-size: 0.85rem;">AVAILABLE</span>' : `<span style="margin-left: 8px; color: #991b1b; font-size: 0.85rem;">USED${usedJob && usedJob !== job.jobNumber ? ` (Job: ${usedJob})` : ''}</span>`}
+                                                    </div>
+                                                `;
+                                            }).join('')}
+                                        </div>
                                     </div>
                                 </div>
                             `).join('')}
@@ -623,22 +654,28 @@ async function displayLotDetails(stockNumber, lotNumber) {
                 <div class="details-section">
                     <h4 class="details-section-title">Individual Roll Details</h4>
                     <div class="rolls-list-detailed">
-                        ${childRolls.map((roll, index) => `
+                        ${childRolls.map((roll, index) => {
+                            const rollNumber = index + 1;
+                            const usedJobId = roll.usedJobId || (roll.status === 'USED' && roll.jobId ? roll.jobId : null);
+                            return `
                             <div class="roll-detail-item ${roll.status === 'USED' ? 'used' : 'available'}">
                                 <div class="roll-detail-header">
-                                    <span class="roll-detail-number">Roll ${index + 1}</span>
+                                    <span class="roll-detail-number">Roll ${rollNumber}</span>
                                     <span class="roll-detail-status ${roll.status.toLowerCase()}">${roll.status}</span>
                                 </div>
                                 <div class="roll-detail-body">
                                     <span class="roll-detail-width">${roll.width}mm</span>
+                                    ${roll.jobId ? `<span style="margin-left: 12px; color: var(--gray-600); font-size: 0.9rem;">Slit Job: ${roll.jobId}</span>` : ''}
+                                    ${usedJobId && usedJobId !== roll.jobId ? `<span style="margin-left: 12px; color: var(--error-red); font-size: 0.9rem; font-weight: 500;">Used Job: ${usedJobId}</span>` : ''}
                                     ${roll.usedAt ? `
-                                        <span class="roll-detail-date">Used: ${new Date(roll.usedAt).toLocaleString()}</span>
+                                        <span class="roll-detail-date" style="display: block; margin-top: 8px; font-size: 0.85rem; color: var(--gray-600);">Used: ${new Date(roll.usedAt).toLocaleString()}</span>
                                     ` : `
-                                        <span class="roll-detail-date">Created: ${new Date(roll.createdAt).toLocaleString()}</span>
+                                        <span class="roll-detail-date" style="display: block; margin-top: 8px; font-size: 0.85rem; color: var(--gray-600);">Created: ${new Date(roll.createdAt).toLocaleString()}</span>
                                     `}
                                 </div>
                             </div>
-                        `).join('')}
+                        `;
+                        }).join('')}
                     </div>
                 </div>
             ` : ''}
