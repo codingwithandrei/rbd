@@ -207,18 +207,17 @@ function printLabels() {
         const printView = document.getElementById('printView');
         printView.innerHTML = '';
 
-        // Create print-friendly layout - one label per page
+        // Create print-friendly layout - one label per page, vertical layout
         codesToPrint.forEach((qr, index) => {
             const labelDiv = document.createElement('div');
             labelDiv.className = 'label-print-item';
-            labelDiv.style.width = '100%';
-            labelDiv.style.height = '100vh';
             labelDiv.innerHTML = `
-                <div class="label-qr-code" id="print-qr-${index}"></div>
-                <div class="label-info">
-                    <div class="label-stock"><strong>Stock:</strong> ${qr.stockNumber || 'N/A'}</div>
-                    <div class="label-lot"><strong>Lot:</strong> ${qr.lotNumber || 'N/A'}</div>
-                    <div class="label-url">${qr.qrUrl || 'N/A'}</div>
+                <div class="label-content">
+                    <div class="label-qr-code" id="print-qr-${index}"></div>
+                    <div class="label-info">
+                        <div class="label-stock">${qr.stockNumber || 'N/A'}</div>
+                        <div class="label-lot">${qr.lotNumber || 'N/A'}</div>
+                    </div>
                 </div>
             `;
             printView.appendChild(labelDiv);
