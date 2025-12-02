@@ -464,5 +464,126 @@ const DB = {
             console.error('Error getting QR stage:', error);
             return 'not_found';
         }
+    },
+    
+    // Deleted Stock Numbers Operations
+    deletedStockNumbers: {
+        // Get all deleted stock numbers
+        async getAll() {
+            try {
+                const db = DB._getDB();
+                const snapshot = await db.collection('deletedStockNumbers').get();
+                return snapshot.docs.map(doc => DB._docToObject(doc));
+            } catch (error) {
+                console.error('Error getting deleted stock numbers:', error);
+                return [];
+            }
+        },
+        
+        // Get deleted stock number by stock number
+        async getByStockNumber(stockNumber) {
+            try {
+                const db = DB._getDB();
+                const snapshot = await db.collection('deletedStockNumbers')
+                    .where('stockNumber', '==', stockNumber)
+                    .limit(1)
+                    .get();
+                if (snapshot.empty) return null;
+                return DB._docToObject(snapshot.docs[0]);
+            } catch (error) {
+                console.error('Error getting deleted stock number:', error);
+                return null;
+            }
+        },
+        
+        // Create (move to deleted)
+        async create(data) {
+            try {
+                const db = DB._getDB();
+                const deletedStock = {
+                    stockNumber: data.stockNumber,
+                    originalData: data.originalData, // Store all related data
+                    deletedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    deletedBy: data.deletedBy || 'user'
+                };
+                
+                const docRef = await db.collection('deletedStockNumbers').add(deletedStock);
+                const saved = await docRef.get();
+                const savedData = DB._docToObject(saved);
+                
+                console.log('✓ Stock number moved to deleted:', savedData);
+                return savedData;
+            } catch (error) {
+                console.error('Error creating deleted stock number:', error);
+                throw new Error('Failed to delete stock number: ' + error.message);
+            }
+        },
+        
+        // Restore (delete from deleted collection and restore original data)
+        async restore(stockNumber) {
+            try {
+                const db = DB._getDB();
+                const deleted = await this.getByStockNumber(stockNumber);
+                if (!deleted) {
+                    throw new Error('Deleted stock number not found');
+                }
+                
+                // Restore original data
+                if (deleted.originalData) {
+                    // Restore master rolls if they existed
+                    if (deleted.originalData.masterRolls && deleted.originalData.masterRolls.length > 0) {
+                        const batch = db.batch();
+                        deleted.originalData.masterRolls.forEach(roll => {
+                            const rollRef = db.collection('masterRolls').doc();
+                            batch.set(rollRef, roll);
+                        });
+                        await batch.commit();
+                    }
+                    
+                    // Restore QR codes if they existed
+                    if (deleted.originalData.qrCodes && deleted.originalData.qrCodes.length > 0) {
+                        const batch = db.batch();
+                        deleted.originalData.qrCodes.forEach(qr => {
+                            const qrRef = db.collection('qrCodes').doc();
+                            batch.set(qrRef, qr);
+                        });
+                        await batch.commit();
+                    }
+                }
+                
+                // Remove from deleted collection
+                const snapshot = await db.collection('deletedStockNumbers')
+                    .where('stockNumber', '==', stockNumber)
+                    .get();
+                const batch = db.batch();
+                snapshot.docs.forEach(doc => batch.delete(doc.ref));
+                await batch.commit();
+                
+                console.log('✓ Stock number restored:', stockNumber);
+                return true;
+            } catch (error) {
+                console.error('Error restoring stock number:', error);
+                throw new Error('Failed to restore stock number: ' + error.message);
+            }
+        },
+        
+        // Permanently delete (remove from deleted collection)
+        async permanentlyDelete(stockNumber) {
+            try {
+                const db = DB._getDB();
+                const snapshot = await db.collection('deletedStockNumbers')
+                    .where('stockNumber', '==', stockNumber)
+                    .get();
+                const batch = db.batch();
+                snapshot.docs.forEach(doc => batch.delete(doc.ref));
+                await batch.commit();
+                
+                console.log('✓ Stock number permanently deleted:', stockNumber);
+                return true;
+            } catch (error) {
+                console.error('Error permanently deleting stock number:', error);
+                throw new Error('Failed to permanently delete stock number: ' + error.message);
+            }
+        }
     }
 };

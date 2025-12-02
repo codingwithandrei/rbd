@@ -8,6 +8,11 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
+    <!-- Floating Home Button -->
+    <button class="floating-home-button" onclick="navigateTo('index.html')" title="Return to Home">
+        🏠 Home
+    </button>
+    
     <div class="container">
         <header class="header">
             <h1 class="logo">Print QR Codes</h1>
@@ -36,14 +41,9 @@
 
                 <!-- Action Buttons -->
                 <div class="button-group" style="margin-bottom: 24px;">
-                    <button type="button" class="btn btn-primary" onclick="importQRCodesCSV()">Import QR Codes (CSV)</button>
                     <button type="button" class="btn btn-yellow" onclick="exportLabelsCSV()">Export Labels (CSV)</button>
                     <button type="button" class="btn btn-yellow" onclick="printLabels()">Print Labels</button>
-                    <button type="button" class="btn btn-secondary" onclick="refreshQRCodes()">Refresh</button>
                 </div>
-
-                <!-- Hidden file input for CSV import -->
-                <input type="file" id="csvFileInput" accept=".csv" style="display: none;" onchange="handleCSVFile(event)">
 
                 <!-- Loading Message -->
                 <div id="loadingMessage" class="info-message" style="display: none;">

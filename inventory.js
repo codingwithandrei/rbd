@@ -4,6 +4,7 @@ let selectedStockNumber = null;
 let selectedLotNumber = null;
 let searchQuery = '';
 let searchResults = null;
+let deletedStocksView = false; // Track if viewing deleted stocks
 
 document.addEventListener('DOMContentLoaded', async function() {
     // Ensure database is initialized
@@ -60,6 +61,12 @@ async function loadInventory() {
     }
     
     try {
+        // Don't show deleted stocks in normal view
+        if (deletedStocksView) {
+            await showDeletedStocks();
+            return;
+        }
+        
         // If there's an active search, show search results instead
         if (searchQuery) {
             await performSearch(searchQuery);
@@ -206,7 +213,7 @@ async function displayStockGroups() {
         container.innerHTML = `
             <h3 class="form-title" style="font-size: 1.5rem; margin-bottom: 20px;">Master Rolls by Stock Number</h3>
             <p class="form-subtitle" style="margin-bottom: 24px;">
-                Click on a stock number to view all lot numbers
+                Select stock numbers using checkboxes to delete them
             </p>
             <div class="stock-groups-container">
                 ${stockNumbers.map(stockNumber => {
@@ -219,39 +226,49 @@ async function displayStockGroups() {
                     const unregisteredCount = lots.filter(r => !r.isRegistered).length;
                     
                     return `
-                        <div class="stock-group-card" onclick="selectStock('${stockNumber}')">
-                            <div class="stock-card-header">
-                                <h4>Stock Number: ${stockNumber}</h4>
-                                <div class="stock-badge">${totalLots} ${totalLots === 1 ? 'Lot' : 'Lots'}</div>
+                        <div class="stock-group-card" style="position: relative; padding-left: 50px;">
+                            <div style="position: absolute; top: 16px; left: 16px; z-index: 10; background: white; padding: 4px; border-radius: 4px;">
+                                <input type="checkbox" class="stock-checkbox" value="${stockNumber}" onchange="updateDeleteButton()" style="width: 20px; height: 20px; cursor: pointer; display: block;" onclick="event.stopPropagation();">
                             </div>
-                            <div class="stock-card-body">
-                                <div class="stock-stats">
-                                    <div class="stat-item">
-                                        <span class="stat-label">Total Lots:</span>
-                                        <span class="stat-value">${totalLots}</span>
-                                    </div>
-                                    ${unregisteredCount > 0 ? `
-                                    <div class="stat-item">
-                                        <span class="stat-label">Unregistered:</span>
-                                        <span class="stat-value" style="color: var(--gray-600);">${unregisteredCount}</span>
-                                    </div>
-                                    ` : ''}
-                                <div class="stat-item">
-                                    <span class="stat-label">Registered:</span>
-                                    <span class="stat-value">${registeredCount}</span>
+                            <div onclick="selectStock('${stockNumber}')" style="cursor: pointer;">
+                                <div class="stock-card-header">
+                                    <h4>Stock Number: ${stockNumber}</h4>
+                                    <div class="stock-badge">${totalLots} ${totalLots === 1 ? 'Lot' : 'Lots'}</div>
                                 </div>
+                                <div class="stock-card-body">
+                                    <div class="stock-stats">
+                                        <div class="stat-item">
+                                            <span class="stat-label">Total Lots:</span>
+                                            <span class="stat-value">${totalLots}</span>
+                                        </div>
+                                        ${unregisteredCount > 0 ? `
+                                        <div class="stat-item">
+                                            <span class="stat-label">Unregistered:</span>
+                                            <span class="stat-value" style="color: var(--gray-600);">${unregisteredCount}</span>
+                                        </div>
+                                        ` : ''}
+                                    <div class="stat-item">
+                                        <span class="stat-label">Registered:</span>
+                                        <span class="stat-value">${registeredCount}</span>
+                                    </div>
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="stock-card-footer">
-                                <button class="btn btn-primary btn-block" onclick="event.stopPropagation(); selectStock('${stockNumber}');">
-                                    View Lots
-                                </button>
+                                <div class="stock-card-footer">
+                                    <button class="btn btn-primary btn-block" onclick="event.stopPropagation(); selectStock('${stockNumber}');">
+                                        View Lots
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     `;
                 }).join('')}
             </div>
         `;
+        
+        // Initialize delete button state after rendering
+        setTimeout(() => {
+            updateDeleteButton();
+        }, 100);
     } catch (error) {
         console.error('Error in displayStockGroups:', error);
         container.innerHTML = `
@@ -879,33 +896,38 @@ async function performSearch(query) {
                     const unregisteredCount = lots.filter(r => !r.status || r.status === 'unregistered').length;
                     
                     return `
-                        <div class="stock-group-card" onclick="selectStock('${stockNumber}')">
-                            <div class="stock-card-header">
-                                <h4>Stock Number: ${stockNumber}</h4>
-                                <div class="stock-badge">${totalLots} ${totalLots === 1 ? 'Lot' : 'Lots'}</div>
+                        <div class="stock-group-card" style="position: relative; padding-left: 50px;">
+                            <div style="position: absolute; top: 16px; left: 16px; z-index: 10; background: white; padding: 4px; border-radius: 4px;">
+                                <input type="checkbox" class="stock-checkbox" value="${stockNumber}" onchange="updateDeleteButton()" style="width: 20px; height: 20px; cursor: pointer; display: block;" onclick="event.stopPropagation();">
                             </div>
-                            <div class="stock-card-body">
-                                <div class="stock-stats">
-                                    <div class="stat-item">
-                                        <span class="stat-label">Total Lots:</span>
-                                        <span class="stat-value">${totalLots}</span>
-                                    </div>
-                                    ${unregisteredCount > 0 ? `
-                                    <div class="stat-item">
-                                        <span class="stat-label">Unregistered:</span>
-                                        <span class="stat-value" style="color: var(--gray-600);">${unregisteredCount}</span>
-                                    </div>
-                                    ` : ''}
+                            <div onclick="selectStock('${stockNumber}')" style="cursor: pointer;">
+                                <div class="stock-card-header">
+                                    <h4>Stock Number: ${stockNumber}</h4>
+                                    <div class="stock-badge">${totalLots} ${totalLots === 1 ? 'Lot' : 'Lots'}</div>
+                                </div>
+                                <div class="stock-card-body">
+                                    <div class="stock-stats">
+                                        <div class="stat-item">
+                                            <span class="stat-label">Total Lots:</span>
+                                            <span class="stat-value">${totalLots}</span>
+                                        </div>
+                                        ${unregisteredCount > 0 ? `
+                                        <div class="stat-item">
+                                            <span class="stat-label">Unregistered:</span>
+                                            <span class="stat-value" style="color: var(--gray-600);">${unregisteredCount}</span>
+                                        </div>
+                                        ` : ''}
                                     <div class="stat-item">
                                         <span class="stat-label">Registered:</span>
                                         <span class="stat-value">${registeredCount}</span>
                                     </div>
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="stock-card-footer">
-                                <button class="btn btn-primary btn-block" onclick="event.stopPropagation(); selectStock('${stockNumber}');">
-                                    View Lots
-                                </button>
+                                <div class="stock-card-footer">
+                                    <button class="btn btn-primary btn-block" onclick="event.stopPropagation(); selectStock('${stockNumber}');">
+                                        View Lots
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     `;
@@ -1067,4 +1089,247 @@ async function exportToExcel() {
     }
 }
 
+// Update delete button visibility
+function updateDeleteButton() {
+    console.log('updateDeleteButton called');
+    const checkboxes = document.querySelectorAll('.stock-checkbox:checked');
+    console.log('Checked checkboxes:', checkboxes.length);
+    const deleteBtn = document.getElementById('deleteSelectedBtn');
+    const deleteContainer = document.getElementById('deleteButtonContainer');
+    console.log('Delete button element:', deleteBtn);
+    console.log('Delete container element:', deleteContainer);
+    
+    if (deleteBtn && deleteContainer) {
+        if (checkboxes.length > 0) {
+            deleteContainer.style.display = 'block';
+            deleteBtn.textContent = `Delete Selected (${checkboxes.length})`;
+            console.log('Delete button shown');
+        } else {
+            deleteContainer.style.display = 'none';
+            console.log('Delete button hidden');
+        }
+    } else {
+        console.error('Delete button or container not found!', { deleteBtn, deleteContainer });
+    }
+}
+
+// Delete selected stock numbers
+async function deleteSelectedStocks() {
+    const checkboxes = document.querySelectorAll('.stock-checkbox:checked');
+    const selectedStocks = Array.from(checkboxes).map(cb => cb.value);
+    
+    if (selectedStocks.length === 0) {
+        alert('Please select at least one stock number to delete.');
+        return;
+    }
+    
+    const confirmMessage = `Are you sure you want to delete ${selectedStocks.length} stock number(s)?\n\nThis will move them to deleted stock numbers (they can be restored later).`;
+    if (!confirm(confirmMessage)) {
+        return;
+    }
+    
+    try {
+        // Show loading
+        const container = document.getElementById('inventoryContainer');
+        const originalContent = container.innerHTML;
+        container.innerHTML = '<p style="text-align: center; padding: 20px;">Deleting stock numbers...</p>';
+        
+        // Delete each selected stock number
+        for (const stockNumber of selectedStocks) {
+            await deleteStockNumber(stockNumber);
+        }
+        
+        // Refresh inventory
+        await loadInventory();
+        
+        alert(`✓ Successfully deleted ${selectedStocks.length} stock number(s).\n\nThey can be restored from "View Deleted" button.`);
+    } catch (error) {
+        console.error('Error deleting stock numbers:', error);
+        alert(`✗ Failed to delete stock numbers.\n\nError: ${error.message}`);
+        await loadInventory(); // Refresh to show current state
+    }
+}
+
+// Delete a single stock number (move to deleted collection)
+async function deleteStockNumber(stockNumber) {
+    try {
+        // Get all related data for this stock number
+        const masterRolls = await DB.masterRolls.getAll();
+        const qrCodes = await DB.qrCodes.getAll();
+        const childRolls = await DB.childRolls.getAll();
+        
+        // Filter data for this stock number
+        const stockMasterRolls = masterRolls.filter(r => r.stockNumber === stockNumber);
+        const stockQRCodes = qrCodes.filter(qr => qr.stockNumber === stockNumber);
+        const stockChildRolls = childRolls.filter(cr => {
+            // Find parent master roll for this child roll
+            const parentMaster = masterRolls.find(mr => mr.qrValue === cr.masterRollQR);
+            return parentMaster && parentMaster.stockNumber === stockNumber;
+        });
+        
+        // Store original data
+        const originalData = {
+            masterRolls: stockMasterRolls,
+            qrCodes: stockQRCodes,
+            childRolls: stockChildRolls
+        };
+        
+        // Move to deleted collection
+        await DB.deletedStockNumbers.create({
+            stockNumber: stockNumber,
+            originalData: originalData
+        });
+        
+        // Delete from active collections
+        const db = DB._getDB();
+        const batch = db.batch();
+        
+        // Delete master rolls
+        for (const roll of stockMasterRolls) {
+            const rollRef = db.collection('masterRolls').doc(roll.id);
+            batch.delete(rollRef);
+        }
+        
+        // Delete QR codes
+        for (const qr of stockQRCodes) {
+            const qrRef = db.collection('qrCodes').doc(qr.id);
+            batch.delete(qrRef);
+        }
+        
+        // Delete child rolls
+        for (const child of stockChildRolls) {
+            const childRef = db.collection('childRolls').doc(child.id);
+            batch.delete(childRef);
+        }
+        
+        await batch.commit();
+        
+        console.log(`✓ Stock number ${stockNumber} moved to deleted`);
+    } catch (error) {
+        console.error(`Error deleting stock number ${stockNumber}:`, error);
+        throw error;
+    }
+}
+
+// Show deleted stock numbers
+async function showDeletedStocks() {
+    try {
+        deletedStocksView = true;
+        const container = document.getElementById('inventoryContainer');
+        container.innerHTML = '<p style="text-align: center; padding: 20px;">Loading deleted stock numbers...</p>';
+        
+        const deletedStocks = await DB.deletedStockNumbers.getAll();
+        
+        if (deletedStocks.length === 0) {
+            container.innerHTML = `
+                <div class="info-message">
+                    <h3 style="margin-bottom: 12px;">No Deleted Stock Numbers</h3>
+                    <p>No stock numbers have been deleted yet.</p>
+                </div>
+                <div class="button-group" style="margin-top: 20px;">
+                    <button class="btn btn-secondary" onclick="deletedStocksView = false; loadInventory();">Back to Inventory</button>
+                </div>
+            `;
+            return;
+        }
+        
+        container.innerHTML = `
+            <h3 class="form-title" style="font-size: 1.5rem; margin-bottom: 20px;">Deleted Stock Numbers</h3>
+            <p class="form-subtitle" style="margin-bottom: 24px;">
+                These stock numbers can be restored or permanently deleted
+            </p>
+            <div class="stock-groups-container">
+                ${deletedStocks.map(deleted => {
+                    const deletedDate = deleted.deletedAt ? new Date(deleted.deletedAt).toLocaleString() : 'Unknown';
+                    const stockNumber = deleted.stockNumber;
+                    const originalData = deleted.originalData || {};
+                    const masterRollsCount = originalData.masterRolls ? originalData.masterRolls.length : 0;
+                    const qrCodesCount = originalData.qrCodes ? originalData.qrCodes.length : 0;
+                    
+                    return `
+                        <div class="stock-group-card">
+                            <div class="stock-card-header">
+                                <h4>Stock Number: ${stockNumber}</h4>
+                                <div class="stock-badge" style="background: var(--error-red); color: white;">Deleted</div>
+                            </div>
+                            <div class="stock-card-body">
+                                <div class="stock-stats">
+                                    <div class="stat-item">
+                                        <span class="stat-label">Master Rolls:</span>
+                                        <span class="stat-value">${masterRollsCount}</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span class="stat-label">QR Codes:</span>
+                                        <span class="stat-value">${qrCodesCount}</span>
+                                    </div>
+                                </div>
+                                <p style="font-size: 0.85rem; color: var(--gray-600); margin-top: 12px;">
+                                    Deleted: ${deletedDate}
+                                </p>
+                            </div>
+                            <div class="stock-card-footer">
+                                <button class="btn btn-primary btn-block" onclick="restoreStockNumber('${stockNumber}')">Restore</button>
+                                <button class="btn btn-danger btn-block" onclick="permanentlyDeleteStock('${stockNumber}')" style="margin-top: 8px;">Permanently Delete</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+            <div class="button-group" style="margin-top: 20px;">
+                <button class="btn btn-secondary" onclick="deletedStocksView = false; loadInventory();">Back to Inventory</button>
+            </div>
+        `;
+    } catch (error) {
+        console.error('Error loading deleted stocks:', error);
+        alert(`✗ Failed to load deleted stock numbers.\n\nError: ${error.message}`);
+    }
+}
+
+// Restore a deleted stock number
+async function restoreStockNumber(stockNumber) {
+    if (!confirm(`Are you sure you want to restore stock number "${stockNumber}"?`)) {
+        return;
+    }
+    
+    try {
+        await DB.deletedStockNumbers.restore(stockNumber);
+        alert(`✓ Stock number "${stockNumber}" has been restored.`);
+        
+        // Refresh view
+        if (deletedStocksView) {
+            await showDeletedStocks();
+        } else {
+            await loadInventory();
+        }
+    } catch (error) {
+        console.error('Error restoring stock number:', error);
+        alert(`✗ Failed to restore stock number.\n\nError: ${error.message}`);
+    }
+}
+
+// Permanently delete a stock number
+async function permanentlyDeleteStock(stockNumber) {
+    if (!confirm(`⚠️ WARNING: This will permanently delete stock number "${stockNumber}" and cannot be undone.\n\nAre you absolutely sure?`)) {
+        return;
+    }
+    
+    if (!confirm(`Final confirmation: Permanently delete "${stockNumber}"?`)) {
+        return;
+    }
+    
+    try {
+        await DB.deletedStockNumbers.permanentlyDelete(stockNumber);
+        alert(`✓ Stock number "${stockNumber}" has been permanently deleted.`);
+        
+        // Refresh view
+        if (deletedStocksView) {
+            await showDeletedStocks();
+        } else {
+            await loadInventory();
+        }
+    } catch (error) {
+        console.error('Error permanently deleting stock number:', error);
+        alert(`✗ Failed to permanently delete stock number.\n\nError: ${error.message}`);
+    }
+}
 

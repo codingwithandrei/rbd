@@ -1270,3 +1270,49 @@ body {
     margin-top: 5px;
 }
 
+/* Floating Home Button */
+.floating-home-button {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    z-index: 10000;
+    background: var(--primary-blue);
+    color: var(--white);
+    border: none;
+    border-radius: 50px;
+    padding: 12px 20px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.floating-home-button:hover {
+    background: var(--light-blue);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+.floating-home-button:active {
+    transform: translateY(0);
+}
+
+@media (max-width: 768px) {
+    .floating-home-button {
+        top: 10px;
+        left: 10px;
+        padding: 10px 16px;
+        font-size: 0.9rem;
+    }
+}
+
+@media print {
+    .floating-home-button {
+        display: none !important;
+    }
+}
+
