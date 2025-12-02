@@ -606,16 +606,21 @@ function printLabels() {
 
             // Generate QR code for print
             const qrElement = document.getElementById(`print-qr-${index}`);
-            // Use saved QR URL or construct from data
+            // Always use production URL for QR codes (never localhost)
+            const productionUrl = 'https://rbd-weld.vercel.app';
             let qrUrl = qr.qrUrl;
-            if (!qrUrl) {
-                // Fallback: construct URL (use production URL for consistency)
-                const productionUrl = 'https://rbd-weld.vercel.app';
-                const isLocalhost = window.location.hostname === 'localhost' || 
-                                   window.location.hostname === '127.0.0.1' || 
-                                   window.location.hostname.includes('192.168.');
-                const baseUrl = isLocalhost ? window.location.origin : productionUrl;
-                qrUrl = `${baseUrl}/index.html?qr=${encodeURIComponent(qr.qrValue)}&lot=${encodeURIComponent(qr.lotNumber)}&stock=${encodeURIComponent(qr.stockNumber)}`;
+            
+            // If qrUrl exists but contains localhost, replace it with production URL
+            if (qrUrl && (qrUrl.includes('localhost') || qrUrl.includes('127.0.0.1') || qrUrl.includes('192.168.'))) {
+                // Extract the query parameters and rebuild with production URL
+                const urlObj = new URL(qrUrl);
+                const qrParam = urlObj.searchParams.get('qr') || qr.qrValue;
+                const lotParam = urlObj.searchParams.get('lot') || qr.lotNumber;
+                const stockParam = urlObj.searchParams.get('stock') || qr.stockNumber;
+                qrUrl = `${productionUrl}/index.html?qr=${encodeURIComponent(qrParam)}&lot=${encodeURIComponent(lotParam)}&stock=${encodeURIComponent(stockParam)}`;
+            } else if (!qrUrl) {
+                // Construct URL if not exists
+                qrUrl = `${productionUrl}/index.html?qr=${encodeURIComponent(qr.qrValue)}&lot=${encodeURIComponent(qr.lotNumber)}&stock=${encodeURIComponent(qr.stockNumber)}`;
             }
             
             try {

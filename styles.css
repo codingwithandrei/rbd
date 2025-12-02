@@ -1044,6 +1044,8 @@ body {
         width: 100%;
         display: block !important;
         visibility: visible !important;
+        margin: 0;
+        padding: 0;
     }
     
     /* Print-specific settings */
@@ -1060,16 +1062,28 @@ body {
     
     .label-print-item {
         display: block !important;
-        width: 384px;  /* 4in at 96 DPI - fixed pixel size */
-        height: 288px; /* 3in at 96 DPI - fixed pixel size */
-        padding: 20px;
-        margin: 0 auto;
+        width: 4in;      /* 4 inches */
+        height: 3in;     /* 3 inches */
+        max-width: 4in;
+        max-height: 3in;
+        padding: 0.1in;
+        margin: 0;
         page-break-after: always;
         page-break-inside: avoid;
+        page-break-before: always;
         box-sizing: border-box;
-        position: relative;
+        position: absolute;  /* Changed to absolute for centering */
         background: white;
         visibility: visible !important;
+        overflow: hidden;
+        /* Scale to 84% to fit within browser margins (based on testing) */
+        transform: scale(0.84);
+        transform-origin: center center;
+        /* Perfect centering on page */
+        left: 50%;
+        top: 50%;
+        margin-left: -2in;   /* Half of 4in width */
+        margin-top: -1.5in;  /* Half of 3in height */
     }
     
     .label-print-item:last-child {
@@ -1077,50 +1091,60 @@ body {
     }
     
     .label-content {
-        display: block !important;
+        display: flex !important;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
         width: 100%;
         height: 100%;
         text-align: center;
-        padding-top: 30px; /* Push content down from top */
         box-sizing: border-box;
         visibility: visible !important;
+        padding: 0.05in;  /* Reduced from 0.1in */
     }
     
     .label-qr-code {
         display: block;
         width: 100%;
         text-align: center;
-        margin: 0 auto 20px;
+        margin: 0 auto 0.08in;  /* Reduced from 0.1in */
         height: auto;
+        flex-shrink: 0;
     }
     
     .label-qr-code canvas,
     .label-qr-code img {
-        width: 120px !important;  /* Fixed pixel size for reliability */
-        height: 120px !important;
-        max-width: 120px !important;
-        max-height: 120px !important;
+        width: 1.1in !important;  /* Reduced from 1.2in */
+        height: 1.1in !important;
+        max-width: 1.1in !important;
+        max-height: 1.1in !important;
         display: block;
         margin: 0 auto;
     }
     
     .label-info {
-        display: block !important;
+        display: flex !important;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
         width: 100%;
         text-align: center;
-        margin-top: 10px;
+        margin-top: 0.05in;  /* Reduced from 0.1in */
         visibility: visible !important;
+        flex-grow: 1;
+        flex-shrink: 1;  /* Allow shrinking if needed */
     }
     
     .label-stock,
     .label-lot {
-        font-size: 18px;
+        font-size: 0.16in;  /* Reduced from 0.18in */
         font-weight: bold;
         text-align: center;
-        line-height: 1.4;
-        margin: 8px 0;
+        line-height: 1.2;  /* Reduced from 1.3 */
+        margin: 0.03in 0;  /* Reduced from 0.05in */
         color: #000;
         display: block !important;  /* Ensure both stock and lot are visible */
+        width: 100%;
     }
     
     .label-url {
@@ -1152,23 +1176,27 @@ body {
     display: block;
     width: 384px;  /* 4in at 96 DPI */
     height: 288px; /* 3in at 96 DPI */
-    padding: 20px;
+    padding: 15px;
     margin: 20px auto;
     border: 2px solid #333;
     background: white;
     box-sizing: border-box;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     page-break-after: always;
+    overflow: hidden; /* Prevent overflow in preview */
 }
 
 /* Print styles use different layout - screen preview uses vertical layout */
 #printView .label-content {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
     width: 100%;
     height: 100%;
     text-align: center;
-    padding-top: 30px;
     box-sizing: border-box;
+    padding: 10px;
 }
 
 #printView .label-qr-code {
@@ -1190,10 +1218,14 @@ body {
 }
 
 #printView .label-info {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
     width: 100%;
     text-align: center;
     margin-top: 10px;
+    flex-grow: 1;
 }
 
 #printView .label-stock,
