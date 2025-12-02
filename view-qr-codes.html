@@ -36,10 +36,14 @@
 
                 <!-- Action Buttons -->
                 <div class="button-group" style="margin-bottom: 24px;">
+                    <button type="button" class="btn btn-primary" onclick="importQRCodesCSV()">Import QR Codes (CSV)</button>
                     <button type="button" class="btn btn-yellow" onclick="exportLabelsCSV()">Export Labels (CSV)</button>
                     <button type="button" class="btn btn-yellow" onclick="printLabels()">Print Labels</button>
                     <button type="button" class="btn btn-secondary" onclick="refreshQRCodes()">Refresh</button>
                 </div>
+
+                <!-- Hidden file input for CSV import -->
+                <input type="file" id="csvFileInput" accept=".csv" style="display: none;" onchange="handleCSVFile(event)">
 
                 <!-- Loading Message -->
                 <div id="loadingMessage" class="info-message" style="display: none;">

@@ -381,6 +381,7 @@ const DB = {
                     lotNumber: data.lotNumber,
                     stockNumber: data.stockNumber,
                     qrUrl: data.qrUrl || null,  // Store QR code URL for printing
+                    batchId: data.batchId || null,  // Store batch ID for grouping
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 };
                 

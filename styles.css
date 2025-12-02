@@ -91,12 +91,19 @@ body {
 }
 
 .options-grid {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
     gap: 20px;
     width: 100%;
-    max-width: 600px;
+    max-width: 1000px;
     margin: 0 auto;
+}
+
+@media (max-width: 768px) {
+    .options-grid {
+        grid-template-columns: 1fr;
+        max-width: 600px;
+    }
 }
 
 .option-card {
@@ -452,14 +459,6 @@ body {
 
 .roll-selection-card.used-roll:hover {
     transform: none;
-}
-    background: var(--white);
-    border: 2px solid var(--gray-200);
-    border-radius: 12px;
-    padding: 20px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .roll-selection-card:hover {
@@ -1035,7 +1034,7 @@ body {
     
     #printView,
     #printView * {
-        visibility: visible;
+        visibility: visible !important;
     }
     
     #printView {
@@ -1044,6 +1043,14 @@ body {
         top: 0;
         width: 100%;
         display: block !important;
+        visibility: visible !important;
+    }
+    
+    /* Print-specific settings */
+    html {
+        zoom: 1;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
     }
     
     @page {
@@ -1052,18 +1059,17 @@ body {
     }
     
     .label-print-item {
-        display: flex !important;
-        width: 4in;
-        height: 3in;
-        padding: 0.3in;
-        margin: 0;
+        display: block !important;
+        width: 384px;  /* 4in at 96 DPI - fixed pixel size */
+        height: 288px; /* 3in at 96 DPI - fixed pixel size */
+        padding: 20px;
+        margin: 0 auto;
         page-break-after: always;
         page-break-inside: avoid;
         box-sizing: border-box;
-        align-items: center;
-        justify-content: center;
-        flex-direction: column;
         position: relative;
+        background: white;
+        visibility: visible !important;
     }
     
     .label-print-item:last-child {
@@ -1071,50 +1077,50 @@ body {
     }
     
     .label-content {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
+        display: block !important;
         width: 100%;
         height: 100%;
-        gap: 0.2in;
-        margin-top: 0.2in;
-        padding-top: 0.15in;
+        text-align: center;
+        padding-top: 30px; /* Push content down from top */
+        box-sizing: border-box;
+        visibility: visible !important;
     }
     
     .label-qr-code {
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        display: block;
         width: 100%;
-        max-height: 1.3in;
-        flex-shrink: 0;
-        margin-bottom: 0.05in;
+        text-align: center;
+        margin: 0 auto 20px;
+        height: auto;
     }
     
     .label-qr-code canvas,
     .label-qr-code img {
-        max-width: 1.3in;
-        max-height: 1.3in;
-        width: auto !important;
-        height: auto !important;
+        width: 120px !important;  /* Fixed pixel size for reliability */
+        height: 120px !important;
+        max-width: 120px !important;
+        max-height: 120px !important;
+        display: block;
+        margin: 0 auto;
     }
     
     .label-info {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 0.1in;
+        display: block !important;
+        width: 100%;
         text-align: center;
+        margin-top: 10px;
+        visibility: visible !important;
     }
     
     .label-stock,
     .label-lot {
-        font-size: 0.3in;
+        font-size: 18px;
         font-weight: bold;
         text-align: center;
-        line-height: 1.2;
+        line-height: 1.4;
+        margin: 8px 0;
+        color: #000;
+        display: block !important;  /* Ensure both stock and lot are visible */
     }
     
     .label-url {
@@ -1122,14 +1128,93 @@ body {
     }
 }
 
+/* Screen styles for printView (when displayed before printing) */
+#printView {
+    display: none;
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background: #f3f4f6;
+    z-index: 9999;
+    overflow: auto;
+    padding: 20px;
+}
+
+#printView[style*="display: block"] {
+    display: block !important;
+    visibility: visible !important;
+}
+
+/* Screen preview styles for labels */
+#printView .label-print-item {
+    display: block;
+    width: 384px;  /* 4in at 96 DPI */
+    height: 288px; /* 3in at 96 DPI */
+    padding: 20px;
+    margin: 20px auto;
+    border: 2px solid #333;
+    background: white;
+    box-sizing: border-box;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    page-break-after: always;
+}
+
+/* Print styles use different layout - screen preview uses vertical layout */
+#printView .label-content {
+    display: block;
+    width: 100%;
+    height: 100%;
+    text-align: center;
+    padding-top: 30px;
+    box-sizing: border-box;
+}
+
+#printView .label-qr-code {
+    display: block;
+    width: 100%;
+    text-align: center;
+    margin: 0 auto 20px;
+    height: auto;
+}
+
+#printView .label-qr-code canvas,
+#printView .label-qr-code img {
+    width: 120px;
+    height: 120px;
+    max-width: 120px;
+    max-height: 120px;
+    display: block;
+    margin: 0 auto;
+}
+
+#printView .label-info {
+    display: block;
+    width: 100%;
+    text-align: center;
+    margin-top: 10px;
+}
+
+#printView .label-stock,
+#printView .label-lot {
+    font-size: 18px;
+    font-weight: bold;
+    text-align: center;
+    line-height: 1.4;
+    margin: 8px 0;
+    color: #000;
+    display: block;
+}
+
+/* Legacy styles for other uses (kept for compatibility) */
 .label-print-item {
-    display: inline-block;
-    width: 4in;
-    height: 2in;
+    display: block;
+    width: 384px;
+    height: 288px;
+    padding: 20px;
+    margin: 20px auto;
     border: 1px solid #ccc;
-    padding: 10px;
-    margin: 5px;
-    vertical-align: top;
     background: white;
     box-sizing: border-box;
 }

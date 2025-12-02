@@ -59,6 +59,20 @@ function generateQRDataInputs() {
             </div>
         `;
         container.appendChild(qrDiv);
+        
+        // Add event listeners to clear error highlighting when user edits
+        const lotInput = document.getElementById(`lotNumber-${i}`);
+        const stockInput = document.getElementById(`stockNumber-${i}`);
+        
+        lotInput.addEventListener('input', () => {
+            lotInput.style.borderColor = '';
+            stockInput.style.borderColor = '';
+        });
+        
+        stockInput.addEventListener('input', () => {
+            lotInput.style.borderColor = '';
+            stockInput.style.borderColor = '';
+        });
 
         // Initialize QR data object
         qrDataArray[i] = {
@@ -77,8 +91,13 @@ function goBackToStep1() {
 }
 
 async function generateQRCodes() {
+    // Generate a unique batch ID for this generation session
+    // All QR codes created in this session will share the same batchId
+    const batchId = `batch-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
     // Collect all data
     const allValid = true;
+    const seenCombinations = new Set(); // Track lot-stock combinations to detect duplicates
     
     for (let i = 0; i < numberOfQRCodes; i++) {
         const lotNumber = document.getElementById(`lotNumber-${i}`).value.trim();
@@ -89,6 +108,17 @@ async function generateQRCodes() {
             return;
         }
 
+        // Check for duplicate lot-stock combination
+        const combination = `${lotNumber}-${stockNumber}`;
+        if (seenCombinations.has(combination)) {
+            alert(`ERROR: Duplicate lot/stock combination detected!\n\nQR Code ${i + 1} has the same Lot Number (${lotNumber}) and Stock Number (${stockNumber}) as a previous entry.\n\nPlease correct the duplicate before proceeding.`);
+            // Highlight the duplicate field
+            document.getElementById(`lotNumber-${i}`).style.borderColor = 'var(--error-red)';
+            document.getElementById(`stockNumber-${i}`).style.borderColor = 'var(--error-red)';
+            return; // Stop and prevent proceeding
+        }
+        
+        seenCombinations.add(combination);
         qrDataArray[i].lotNumber = lotNumber;
         qrDataArray[i].stockNumber = stockNumber;
     }
@@ -166,12 +196,14 @@ async function generateQRCodes() {
             qrValue: qrValue,
             qrData: qrData,
             qrDataJSON: qrDataJSON,
-            element: qrElement
+            element: qrElement,
+            batchId: batchId  // All QR codes in this session share the same batchId
         });
     });
 
         // Save to database with verification
         console.log('Saving QR codes to database...', generatedQRCodes);
+        console.log('Batch ID for this generation:', batchId);
         try {
             for (const qr of generatedQRCodes) {
                 // Create QR code record in database (if not already exists)
@@ -182,7 +214,8 @@ async function generateQRCodes() {
                             qrValue: qr.qrValue,
                             lotNumber: qr.lotNumber,
                             stockNumber: qr.stockNumber,
-                            qrUrl: qr.qrData  // Save the full URL for printing
+                            qrUrl: qr.qrData,  // Save the full URL for printing
+                            batchId: batchId   // Store batch ID for grouping
                         });
                         
                         // Verify it was saved
