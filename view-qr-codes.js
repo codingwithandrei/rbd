@@ -181,7 +181,15 @@ function displayQRCodes(qrCodes) {
                             (Generated: ${batchTime})
                         </span>
                     </div>
-                    <span class="batch-toggle" style="font-size: 1.2rem; color: var(--gray-600);">▼</span>
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <button 
+                            class="btn btn-yellow btn-small" 
+                            onclick="printBatch('${batchId}', event)"
+                            style="padding: 6px 12px; font-size: 0.85rem; z-index: 10; position: relative;"
+                            title="Print this batch"
+                        >🖨️ Print</button>
+                        <span class="batch-toggle" style="font-size: 1.2rem; color: var(--gray-600);">▼</span>
+                    </div>
                 </div>
             `;
             container.appendChild(batchHeader);
@@ -293,6 +301,101 @@ function generateBatchQRCodes(container, qrCodes, startIndex) {
             qrElement.innerHTML = '<p style="color: var(--error-red);">Error generating QR code</p>';
         }
     });
+}
+
+// Print a specific batch
+function printBatch(batchId, event) {
+    // Stop event propagation to prevent batch from expanding/collapsing
+    if (event) {
+        event.stopPropagation();
+    }
+    
+    try {
+        // Find all QR codes in this batch
+        const batchQRCodes = allQRCodes.filter(qr => qr.batchId === batchId);
+        
+        if (batchQRCodes.length === 0) {
+            alert('No QR codes found in this batch.');
+            return;
+        }
+        
+        const printView = document.getElementById('printView');
+        printView.innerHTML = '';
+        
+        // Create print-friendly layout for this batch only
+        batchQRCodes.forEach((qr, index) => {
+            const labelDiv = document.createElement('div');
+            labelDiv.className = 'label-print-item';
+            labelDiv.innerHTML = `
+                <div class="label-content">
+                    <div class="label-qr-code" id="print-qr-${index}"></div>
+                    <div class="label-info">
+                        <div class="label-stock"><strong>Stock:</strong> ${qr.stockNumber || 'N/A'}</div>
+                        <div class="label-lot"><strong>Lot:</strong> ${qr.lotNumber || 'N/A'}</div>
+                    </div>
+                </div>
+            `;
+            printView.appendChild(labelDiv);
+            
+            // Generate QR code for print
+            const qrElement = document.getElementById(`print-qr-${index}`);
+            // Always use production URL
+            const productionUrl = 'https://rbd-weld.vercel.app';
+            let qrUrl = qr.qrUrl;
+            
+            if (qrUrl && (qrUrl.includes('localhost') || qrUrl.includes('127.0.0.1') || qrUrl.includes('192.168.'))) {
+                const urlObj = new URL(qrUrl);
+                const qrParam = urlObj.searchParams.get('qr') || qr.qrValue;
+                const lotParam = urlObj.searchParams.get('lot') || qr.lotNumber;
+                const stockParam = urlObj.searchParams.get('stock') || qr.stockNumber;
+                qrUrl = `${productionUrl}/index.html?qr=${encodeURIComponent(qrParam)}&lot=${encodeURIComponent(lotParam)}&stock=${encodeURIComponent(stockParam)}`;
+            } else if (!qrUrl) {
+                qrUrl = `${productionUrl}/index.html?qr=${encodeURIComponent(qr.qrValue)}&lot=${encodeURIComponent(qr.lotNumber)}&stock=${encodeURIComponent(qr.stockNumber)}`;
+            }
+            
+            try {
+                new QRCode(qrElement, {
+                    text: qrUrl,
+                    width: 120,
+                    height: 120,
+                    colorDark: '#000000',
+                    colorLight: '#ffffff',
+                    correctLevel: QRCode.CorrectLevel.H
+                });
+                
+                const canvas = qrElement.querySelector('canvas');
+                if (canvas) {
+                    canvas.style.width = '120px';
+                    canvas.style.height = '120px';
+                    canvas.style.maxWidth = '120px';
+                    canvas.style.maxHeight = '120px';
+                    canvas.style.display = 'block';
+                    canvas.style.margin = '0 auto';
+                }
+            } catch (error) {
+                console.error('Error generating print QR code:', error);
+                qrElement.innerHTML = '<p>QR Error</p>';
+            }
+        });
+        
+        // Show preview and print
+        setTimeout(() => {
+            printView.style.display = 'block';
+            printView.style.visibility = 'visible';
+            
+            setTimeout(() => {
+                window.print();
+                
+                setTimeout(() => {
+                    printView.style.display = 'none';
+                    printView.style.visibility = 'hidden';
+                }, 1000);
+            }, 300);
+        }, 800);
+    } catch (error) {
+        console.error('Error printing batch:', error);
+        alert(`✗ Failed to print batch.\n\nError: ${error.message}`);
+    }
 }
 
 function handleSearch(event) {
@@ -657,23 +760,14 @@ function printLabels() {
             
             // Additional delay to ensure all QR codes are fully rendered
             setTimeout(() => {
-                // Show preview and ask user if they want to print now
-                const userChoice = confirm(`${codesToPrint.length} label(s) ready for printing.\n\nClick OK to open print dialog now, or Cancel to review the preview and print manually using Ctrl+P.`);
+                // Open print dialog directly (no confirmation popup)
+                window.print();
                 
-                if (userChoice) {
-                    // User wants to print now
-                    window.print();
-                    
-                    // Hide print view after print dialog closes
-                    setTimeout(() => {
-                        printView.style.display = 'none';
-                        printView.style.visibility = 'hidden';
-                    }, 1000);
-                } else {
-                    // User wants to review - keep preview visible
-                    // They can use browser's print button (Ctrl+P) when ready
-                    // Preview will stay visible until page refresh
-                }
+                // Hide print view after print dialog closes
+                setTimeout(() => {
+                    printView.style.display = 'none';
+                    printView.style.visibility = 'hidden';
+                }, 1000);
             }, 300);
         }, 800); // Delay to ensure QR codes render
     } catch (error) {

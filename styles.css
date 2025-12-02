@@ -1062,28 +1062,20 @@ body {
     
     .label-print-item {
         display: block !important;
-        width: 4in;      /* 4 inches */
-        height: 3in;     /* 3 inches */
-        max-width: 4in;
-        max-height: 3in;
+        width: 3.8in;      /* Slightly smaller to fit at 100% scale */
+        height: 2.8in;     /* Slightly smaller to fit at 100% scale */
+        max-width: 3.8in;
+        max-height: 2.8in;
         padding: 0.1in;
-        margin: 0;
+        margin: 0 auto;    /* Center horizontally */
         page-break-after: always;
         page-break-inside: avoid;
         page-break-before: always;
         box-sizing: border-box;
-        position: absolute;  /* Changed to absolute for centering */
+        position: relative;  /* Use relative positioning */
         background: white;
         visibility: visible !important;
         overflow: hidden;
-        /* Scale to 84% to fit within browser margins (based on testing) */
-        transform: scale(0.84);
-        transform-origin: center center;
-        /* Perfect centering on page */
-        left: 50%;
-        top: 50%;
-        margin-left: -2in;   /* Half of 4in width */
-        margin-top: -1.5in;  /* Half of 3in height */
     }
     
     .label-print-item:last-child {
