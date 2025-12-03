@@ -328,10 +328,12 @@ function printBatch(batchId, event) {
             labelDiv.className = 'label-print-item';
             labelDiv.innerHTML = `
                 <div class="label-content">
-                    <div class="label-logo">
-                        <img src="rbd-logo.png.png" alt="RBD Logo" />
+                    <div class="label-top-section">
+                        <div class="label-logo">
+                            <img src="rbd-logo.png.png" alt="RBD Logo" />
+                        </div>
+                        <div class="label-qr-code" id="print-qr-${index}"></div>
                     </div>
-                    <div class="label-qr-code" id="print-qr-${index}"></div>
                     <div class="label-info">
                         <div class="label-stock"><strong>Stock:</strong> ${qr.stockNumber || 'N/A'}</div>
                         <div class="label-lot"><strong>Lot:</strong> ${qr.lotNumber || 'N/A'}</div>
@@ -701,10 +703,12 @@ function printLabels() {
             labelDiv.className = 'label-print-item';
             labelDiv.innerHTML = `
                 <div class="label-content">
-                    <div class="label-logo">
-                        <img src="rbd-logo.png.png" alt="RBD Logo" />
+                    <div class="label-top-section">
+                        <div class="label-logo">
+                            <img src="rbd-logo.png.png" alt="RBD Logo" />
+                        </div>
+                        <div class="label-qr-code" id="print-qr-${index}"></div>
                     </div>
-                    <div class="label-qr-code" id="print-qr-${index}"></div>
                     <div class="label-info">
                         <div class="label-stock"><strong>Stock:</strong> ${qr.stockNumber || 'N/A'}</div>
                         <div class="label-lot"><strong>Lot:</strong> ${qr.lotNumber || 'N/A'}</div>
