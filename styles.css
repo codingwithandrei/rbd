@@ -1122,7 +1122,7 @@ body {
         overflow: hidden;
     }
     
-    /* Top section: Logo left, QR right */
+    /* Top section: Logo left, QR right - add top margin to drop content lower */
     .label-top-section {
         display: flex !important;
         flex-direction: row;
@@ -1130,6 +1130,7 @@ body {
         align-items: center;
         width: 100%;
         gap: 0.15in;
+        margin-top: 0.15in; /* Add top margin to drop QR code lower */
         margin-bottom: 0.15in;
         flex-shrink: 0;
     }
@@ -1139,8 +1140,8 @@ body {
     }
     
     .label-logo img {
-        max-width: 0.7in;
-        max-height: 0.6in;
+        max-width: 1in; /* Increased from 0.7in */
+        max-height: 0.9in; /* Increased from 0.6in */
         display: block;
     }
     
@@ -1150,35 +1151,37 @@ body {
     
     .label-qr-code canvas,
     .label-qr-code img {
-        width: 1.3in !important;
-        height: 1.3in !important;
-        max-width: 1.3in !important;
-        max-height: 1.3in !important;
+        width: 1.6in !important; /* Increased from 1.3in */
+        height: 1.6in !important; /* Increased from 1.3in */
+        max-width: 1.6in !important;
+        max-height: 1.6in !important;
         display: block;
     }
     
-    /* Bottom section: Stock and Lot - ensure both are visible */
+    /* Bottom section: Stock and Lot - moved to bottom left */
     .label-info {
         display: flex !important;
         flex-direction: column;
-        align-items: center;
+        align-items: flex-start; /* Changed from center to flex-start (left align) */
         justify-content: flex-end;
         width: 100%;
         flex-grow: 1;
+        padding-left: 0.1in; /* Add left padding for bottom left positioning */
+        padding-bottom: 0.1in; /* Add bottom padding */
         /* Ensure info section is visible and not cut off */
         min-height: 0.5in;
     }
     
     .label-stock,
     .label-lot {
-        font-size: 0.2in !important;
+        font-size: 0.25in !important; /* Increased from 0.2in */
         font-weight: bold;
-        text-align: center;
+        text-align: left; /* Changed from center to left */
         line-height: 1.2;
         margin: 0.05in 0;
         color: #000;
         display: block !important;
-        width: 100%;
+        width: auto; /* Changed from 100% to auto for left alignment */
         /* Ensure text is visible */
         visibility: visible !important;
         opacity: 1 !important;

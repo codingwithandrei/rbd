@@ -1,10 +1,84 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Public read/write access for all collections
-    match /{document=**} {
-      allow read, write: if true;
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to get user role
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+    
+    // Helper function to check if user is admin
+    function isAdmin() {
+      return isAuthenticated() && getUserRole() == 'admin';
+    }
+    
+    // Helper function to check if user has specific role
+    function hasRole(role) {
+      return isAuthenticated() && (getUserRole() == role || isAdmin());
+    }
+    
+    // Users collection - only authenticated users can read their own data
+    // Only admins can write
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAdmin();
+    }
+    
+    // QR Codes collection
+    // Allow unauthenticated reads (for QR scanning without login)
+    // Users can only see what they query for
+    match /qrCodes/{qrCodeId} {
+      allow read: if true; // Allow reads for QR scanning
+      
+      // Only authenticated users can write
+      allow create: if isAuthenticated() && (isAdmin() || hasRole('operator'));
+      allow update: if isAuthenticated() && (isAdmin() || hasRole('operator'));
+      allow delete: if isAdmin();
+    }
+    
+    // Master Rolls collection
+    // Allow unauthenticated reads (for viewing master roll info when scanning QR)
+    match /masterRolls/{rollId} {
+      allow read: if true; // Allow reads for QR scanning
+      
+      // Only authenticated users can write
+      allow create: if isAuthenticated() && (isAdmin() || hasRole('operator'));
+      allow update: if isAuthenticated() && (isAdmin() || hasRole('operator'));
+      allow delete: if isAdmin();
+    }
+    
+    // Child Rolls collection
+    // Allow unauthenticated reads (for viewing child rolls when scanning QR)
+    match /childRolls/{childRollId} {
+      allow read: if true; // Allow reads for QR scanning
+      
+      // Only authenticated users can write
+      allow create: if isAuthenticated() && (isAdmin() || hasRole('operator'));
+      allow update: if isAuthenticated() && (isAdmin() || hasRole('operator'));
+      allow delete: if isAdmin();
+    }
+    
+    // Scan Events collection
+    // Allow unauthenticated reads and creates (for tracking scans)
+    match /scanEvents/{eventId} {
+      allow read: if true; // Allow reads for viewing scan history
+      allow create: if true; // Anyone can create scan events (for tracking)
+      
+      // Only authenticated users can update/delete
+      allow update: if isAuthenticated() && (isAdmin() || hasRole('operator'));
+      allow delete: if isAdmin();
+    }
+    
+    // Deleted Stock Numbers collection
+    // Only authenticated users can access
+    match /deletedStockNumbers/{deletedId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
     }
   }
 }
-

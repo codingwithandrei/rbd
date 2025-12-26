@@ -47,13 +47,53 @@
     </div>
 
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <script src="firebase-config.js"></script>
+    <script src="auth.js"></script>
     <script src="database.js"></script>
     <script src="app.js"></script>
     <script>
-        // Check if QR code parameters are present
+        // Handle sign out function (global)
+        window.handleSignOut = async function() {
+            try {
+                await Auth.signOut();
+            } catch (error) {
+                console.error('Sign out error:', error);
+            }
+        };
+
+        // Check authentication and QR code parameters
         document.addEventListener('DOMContentLoaded', async function() {
+            // Check if QR code parameters are present (for scanning without login)
+            const urlParams = new URLSearchParams(window.location.search);
+            const qrValue = urlParams.get('qr');
+            const lot = urlParams.get('lot');
+            const stock = urlParams.get('stock');
+            
+            // If no QR parameters, require authentication
+            if (!qrValue && !(lot && stock)) {
+                const authenticated = await Auth.requireAuth();
+                if (!authenticated) {
+                    return; // Redirected to login
+                }
+
+                // Display user info in header for authenticated users
+                const userInfo = await Auth.getUserInfo();
+                if (userInfo) {
+                    const header = document.querySelector('.header');
+                    const userInfoDiv = document.createElement('div');
+                    userInfoDiv.style.cssText = 'margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--gray-200);';
+                    userInfoDiv.innerHTML = `
+                        <p style="color: var(--gray-600); font-size: 0.9rem;">
+                            Signed in as: <strong>${userInfo.email}</strong> (${userInfo.role})
+                            <button onclick="handleSignOut()" style="margin-left: 15px; padding: 4px 12px; background: var(--gray-200); border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem;">Sign Out</button>
+                        </p>
+                    `;
+                    header.appendChild(userInfoDiv);
+                }
+            }
+            
             // Ensure database is initialized
             if (typeof DB !== 'undefined') {
                 try {
@@ -62,10 +102,6 @@
                     console.error('Failed to initialize database:', error);
                 }
             }
-            const urlParams = new URLSearchParams(window.location.search);
-            const qrValue = urlParams.get('qr');
-            const lot = urlParams.get('lot');
-            const stock = urlParams.get('stock');
 
             if (qrValue || (lot && stock)) {
                 // Construct QR value from parameters

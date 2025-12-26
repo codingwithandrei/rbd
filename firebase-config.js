@@ -11,13 +11,14 @@ const firebaseConfig = {
 
 // Initialize Firebase and Firestore
 let db = null;
+let auth = null;
 let firebaseInitialized = false;
 
 // Initialize Firebase and Firestore
 function initializeFirebase() {
-    if (firebaseInitialized && db) {
-        console.log('✓ Using existing Firestore instance');
-        return db;
+    if (firebaseInitialized && db && auth) {
+        console.log('✓ Using existing Firebase instance');
+        return { db, auth };
     }
     
     try {
@@ -35,6 +36,10 @@ function initializeFirebase() {
         
         // Initialize Firestore
         db = firebase.firestore();
+        
+        // Initialize Auth
+        auth = firebase.auth();
+        
         firebaseInitialized = true;
         
         // Enable offline persistence (optional, but helpful)
@@ -42,9 +47,9 @@ function initializeFirebase() {
         //     console.warn('Could not enable offline persistence:', err);
         // });
         
-        console.log('✓ Firebase Firestore initialized successfully');
+        console.log('✓ Firebase Firestore and Auth initialized successfully');
         console.log('📊 Firestore instance:', db);
-        return db;
+        return { db, auth };
     } catch (error) {
         console.error('❌ Error initializing Firebase:', error);
         console.error('Error details:', {
@@ -59,8 +64,16 @@ function initializeFirebase() {
 // Get Firestore instance
 function getFirestore() {
     if (!firebaseInitialized) {
-        return initializeFirebase();
+        initializeFirebase();
     }
     return db;
+}
+
+// Get Auth instance
+function getAuth() {
+    if (!firebaseInitialized) {
+        initializeFirebase();
+    }
+    return auth;
 }
 
