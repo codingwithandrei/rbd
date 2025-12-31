@@ -220,7 +220,7 @@ async function proceedToNumberOfRolls() {
     document.getElementById('step1').style.display = 'block';
 }
 
-// Calculate roll length based on formula: length = (outer² - inner²) / (4 × thickness)
+// Calculate roll length based on formula: PI × (OD² - ID²) / (4 × thickness) / 1,000,000
 function calculateRollLength() {
     const outerDiameter = parseFloat(document.getElementById('outerDiameter').value);
     const innerDiameter = parseFloat(document.getElementById('innerDiameter').value);
@@ -229,16 +229,22 @@ function calculateRollLength() {
     const lengthResult = document.getElementById('lengthResult');
     const proceedBtn = document.getElementById('proceedToSizesBtn');
     
+    // Always show the result container, even if there are errors
+    lengthResult.style.display = 'block';
+    
     // Check if all values are entered
     if (!outerDiameter || !innerDiameter || !thicknessMicrons) {
-        lengthResult.style.display = 'none';
+        lengthResult.innerHTML = `
+            <div style="color: var(--gray-600); font-style: italic;">
+                Please enter all values to calculate roll length
+            </div>
+        `;
         if (proceedBtn) proceedBtn.disabled = true;
         return;
     }
     
     // Validate inputs
     if (innerDiameter >= outerDiameter) {
-        lengthResult.style.display = 'block';
         lengthResult.innerHTML = `
             <div style="color: var(--error-red);">
                 <strong>Error:</strong> Inner diameter must be less than outer diameter
@@ -251,14 +257,17 @@ function calculateRollLength() {
     // Convert thickness from microns to mm (1 micron = 0.001 mm)
     const thicknessMm = thicknessMicrons * 0.001;
     
-    // Calculate length: (outer² - inner²) / (4 × thickness)
-    // Result will be in mm, convert to km (1 km = 1,000,000 mm)
-    const lengthMm = (Math.pow(outerDiameter, 2) - Math.pow(innerDiameter, 2)) / (4 * thicknessMm);
+    // Calculate length: PI × (OD² - ID²) / (4 × thickness) / 1,000,000
+    // Formula: PI × (outer² - inner²) / (4 × thickness) / 1,000,000
+    const odSquared = Math.pow(outerDiameter, 2);
+    const idSquared = Math.pow(innerDiameter, 2);
+    const difference = odSquared - idSquared;
+    const piTimesDifference = Math.PI * difference;
+    const fourTimesThickness = 4 * thicknessMm;
+    const lengthMm = piTimesDifference / fourTimesThickness;
     const lengthKm = lengthMm / 1000000; // Convert mm to km
     
     // Display with 3 decimal places
-    document.getElementById('calculatedLength').textContent = lengthKm.toFixed(3);
-    lengthResult.style.display = 'block';
     lengthResult.innerHTML = `
         <h4 style="color: var(--primary-blue); margin-bottom: 10px;">Calculated Roll Length</h4>
         <p style="font-size: 1.5rem; font-weight: bold; color: var(--gray-900); margin: 0;">
