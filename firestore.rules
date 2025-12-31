@@ -23,10 +23,12 @@ service cloud.firestore {
     }
     
     // Users collection - only authenticated users can read their own data
-    // Only admins can write
+    // Users can create their own document on first login, admins can write to any
     match /users/{userId} {
       allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
-      allow write: if isAdmin();
+      allow create: if isAuthenticated() && request.auth.uid == userId; // Users can create their own document
+      allow update: if isAuthenticated() && (request.auth.uid == userId || isAdmin()); // Users can update their own, admins can update any
+      allow delete: if isAdmin();
     }
     
     // QR Codes collection
