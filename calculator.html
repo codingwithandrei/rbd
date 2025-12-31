@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Roll Length Calculator - RBD App</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Floating Home Button -->
+    <button class="floating-home-button" onclick="navigateTo('index.html')" title="Return to Home">
+        🏠 Home
+    </button>
+    
+    <div class="container">
+        <header class="header">
+            <h1 class="logo">Roll Length Calculator</h1>
+            <p class="subtitle">Calculate roll length from diameter and thickness measurements</p>
+        </header>
+
+        <main class="main-content">
+            <div class="form-container">
+                <div class="form-group">
+                    <label for="outerDiameter" class="form-label">Outer Diameter (mm) *</label>
+                    <input 
+                        type="number" 
+                        id="outerDiameter" 
+                        name="outerDiameter" 
+                        class="form-input" 
+                        placeholder="Enter outer diameter in mm"
+                        min="0"
+                        step="0.01"
+                        required
+                        oninput="calculateRollLength()"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="innerDiameter" class="form-label">Inner Diameter (mm) *</label>
+                    <input 
+                        type="number" 
+                        id="innerDiameter" 
+                        name="innerDiameter" 
+                        class="form-input" 
+                        placeholder="Enter inner diameter in mm"
+                        min="0"
+                        step="0.01"
+                        required
+                        oninput="calculateRollLength()"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="thickness" class="form-label">Thickness (microns) *</label>
+                    <select 
+                        id="thickness" 
+                        name="thickness" 
+                        class="form-input" 
+                        required
+                        onchange="calculateRollLength()"
+                    >
+                        <option value="">Select thickness</option>
+                        <option value="40">40 microns</option>
+                        <option value="45">45 microns</option>
+                        <option value="50">50 microns</option>
+                        <option value="60">60 microns</option>
+                        <option value="70">70 microns</option>
+                    </select>
+                </div>
+
+                <div id="lengthResult" class="form-group" style="display: none; padding: 20px; background: var(--gray-50); border-radius: 8px; border: 2px solid var(--primary-blue); margin: 20px 0;">
+                    <h4 style="color: var(--primary-blue); margin-bottom: 10px;">Calculated Roll Length</h4>
+                    <p style="font-size: 1.5rem; font-weight: bold; color: var(--gray-900); margin: 0;">
+                        <span id="calculatedLength">0.000</span> km
+                    </p>
+                </div>
+
+                <div class="button-group">
+                    <button type="button" class="btn btn-secondary" onclick="clearCalculator()">Clear / New Calculation</button>
+                    <button type="button" class="btn btn-primary" onclick="navigateTo('index.html')">Back to Home</button>
+                </div>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <img src="rbd-logo.png.png" alt="RBD Logo" style="max-width: 80px; height: auto; margin-bottom: 8px; display: block; margin-left: auto; margin-right: auto;">
+            <p>&copy; 2025 RBD Packaging</p>
+        </footer>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="firebase-config.js"></script>
+    <script src="auth.js"></script>
+    <script src="app.js"></script>
+    <script>
+        // Require authentication
+        document.addEventListener('DOMContentLoaded', async function() {
+            await Auth.requireAuth();
+        });
+
+        // Calculate roll length based on formula: PI × (OD² - ID²) / (4 × thickness) / 1,000,000
+        function calculateRollLength() {
+            const outerDiameter = parseFloat(document.getElementById('outerDiameter').value);
+            const innerDiameter = parseFloat(document.getElementById('innerDiameter').value);
+            const thicknessMicrons = parseFloat(document.getElementById('thickness').value);
+            
+            const lengthResult = document.getElementById('lengthResult');
+            
+            // Always show the result container, even if there are errors
+            lengthResult.style.display = 'block';
+            
+            // Check if all values are entered
+            if (!outerDiameter || !innerDiameter || !thicknessMicrons) {
+                lengthResult.innerHTML = `
+                    <div style="color: var(--gray-600); font-style: italic;">
+                        Please enter all values to calculate roll length
+                    </div>
+                `;
+                return;
+            }
+            
+            // Validate inputs
+            if (innerDiameter >= outerDiameter) {
+                lengthResult.innerHTML = `
+                    <div style="color: var(--error-red);">
+                        <strong>Error:</strong> Inner diameter must be less than outer diameter
+                    </div>
+                `;
+                return;
+            }
+            
+            // Convert thickness from microns to mm (1 micron = 0.001 mm)
+            const thicknessMm = thicknessMicrons * 0.001;
+            
+            // Calculate length: PI × (OD² - ID²) / (4 × thickness) / 1,000,000
+            // Formula: PI × (outer² - inner²) / (4 × thickness) / 1,000,000
+            const odSquared = Math.pow(outerDiameter, 2);
+            const idSquared = Math.pow(innerDiameter, 2);
+            const difference = odSquared - idSquared;
+            const piTimesDifference = Math.PI * difference;
+            const fourTimesThickness = 4 * thicknessMm;
+            const lengthMm = piTimesDifference / fourTimesThickness;
+            const lengthKm = lengthMm / 1000000; // Convert mm to km
+            
+            // Display with 3 decimal places
+            lengthResult.innerHTML = `
+                <h4 style="color: var(--primary-blue); margin-bottom: 10px;">Calculated Roll Length</h4>
+                <p style="font-size: 1.5rem; font-weight: bold; color: var(--gray-900); margin: 0;">
+                    ${lengthKm.toFixed(3)} km
+                </p>
+            `;
+        }
+
+        // Clear calculator for new calculation
+        function clearCalculator() {
+            document.getElementById('outerDiameter').value = '';
+            document.getElementById('innerDiameter').value = '';
+            document.getElementById('thickness').value = '';
+            document.getElementById('lengthResult').style.display = 'none';
+        }
+    </script>
+</body>
+</html>
+
