@@ -220,12 +220,86 @@ async function proceedToNumberOfRolls() {
     document.getElementById('step1').style.display = 'block';
 }
 
+// Calculate roll length based on formula: length = (outer² - inner²) / (4 × thickness)
+function calculateRollLength() {
+    const outerDiameter = parseFloat(document.getElementById('outerDiameter').value);
+    const innerDiameter = parseFloat(document.getElementById('innerDiameter').value);
+    const thicknessMicrons = parseFloat(document.getElementById('thickness').value);
+    
+    const lengthResult = document.getElementById('lengthResult');
+    const proceedBtn = document.getElementById('proceedToSizesBtn');
+    
+    // Check if all values are entered
+    if (!outerDiameter || !innerDiameter || !thicknessMicrons) {
+        lengthResult.style.display = 'none';
+        if (proceedBtn) proceedBtn.disabled = true;
+        return;
+    }
+    
+    // Validate inputs
+    if (innerDiameter >= outerDiameter) {
+        lengthResult.style.display = 'block';
+        lengthResult.innerHTML = `
+            <div style="color: var(--error-red);">
+                <strong>Error:</strong> Inner diameter must be less than outer diameter
+            </div>
+        `;
+        if (proceedBtn) proceedBtn.disabled = true;
+        return;
+    }
+    
+    // Convert thickness from microns to mm (1 micron = 0.001 mm)
+    const thicknessMm = thicknessMicrons * 0.001;
+    
+    // Calculate length: (outer² - inner²) / (4 × thickness)
+    // Result will be in mm, convert to km (1 km = 1,000,000 mm)
+    const lengthMm = (Math.pow(outerDiameter, 2) - Math.pow(innerDiameter, 2)) / (4 * thicknessMm);
+    const lengthKm = lengthMm / 1000000; // Convert mm to km
+    
+    // Display with 3 decimal places
+    document.getElementById('calculatedLength').textContent = lengthKm.toFixed(3);
+    lengthResult.style.display = 'block';
+    lengthResult.innerHTML = `
+        <h4 style="color: var(--primary-blue); margin-bottom: 10px;">Calculated Roll Length</h4>
+        <p style="font-size: 1.5rem; font-weight: bold; color: var(--gray-900); margin: 0;">
+            ${lengthKm.toFixed(3)} km
+        </p>
+    `;
+    
+    // Enable proceed button
+    if (proceedBtn) proceedBtn.disabled = false;
+}
+
 function proceedToRollSizes() {
     const input = document.getElementById('numberOfRolls');
     const value = parseInt(input.value);
+    
+    const outerDiameter = parseFloat(document.getElementById('outerDiameter').value);
+    const innerDiameter = parseFloat(document.getElementById('innerDiameter').value);
+    const thickness = document.getElementById('thickness').value;
 
     if (!value || value < 1) {
         alert('Please enter a valid number of rolls (minimum 1)');
+        return;
+    }
+    
+    if (!outerDiameter || outerDiameter <= 0) {
+        alert('Please enter a valid outer diameter');
+        return;
+    }
+    
+    if (!innerDiameter || innerDiameter <= 0) {
+        alert('Please enter a valid inner diameter');
+        return;
+    }
+    
+    if (innerDiameter >= outerDiameter) {
+        alert('Inner diameter must be less than outer diameter');
+        return;
+    }
+    
+    if (!thickness) {
+        alert('Please select a thickness');
         return;
     }
 

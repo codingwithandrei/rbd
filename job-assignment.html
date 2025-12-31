@@ -64,8 +64,10 @@
                 </div>
 
                 <div id="step1" class="step" style="display: none;">
+                    <h3 class="form-title" style="font-size: 1.5rem; margin-bottom: 20px;">Roll Measurements</h3>
+                    
                     <div class="form-group">
-                        <label for="numberOfRolls" class="form-label">Number of Rolls</label>
+                        <label for="numberOfRolls" class="form-label">Number of Rolls *</label>
                         <input 
                             type="number" 
                             id="numberOfRolls" 
@@ -77,9 +79,64 @@
                         >
                     </div>
 
+                    <div class="form-group">
+                        <label for="outerDiameter" class="form-label">Outer Diameter (mm) *</label>
+                        <input 
+                            type="number" 
+                            id="outerDiameter" 
+                            name="outerDiameter" 
+                            class="form-input" 
+                            placeholder="Enter outer diameter in mm"
+                            min="0"
+                            step="0.01"
+                            required
+                            oninput="calculateRollLength()"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="innerDiameter" class="form-label">Inner Diameter (mm) *</label>
+                        <input 
+                            type="number" 
+                            id="innerDiameter" 
+                            name="innerDiameter" 
+                            class="form-input" 
+                            placeholder="Enter inner diameter in mm"
+                            min="0"
+                            step="0.01"
+                            required
+                            oninput="calculateRollLength()"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="thickness" class="form-label">Thickness (microns) *</label>
+                        <select 
+                            id="thickness" 
+                            name="thickness" 
+                            class="form-input" 
+                            required
+                            onchange="calculateRollLength()"
+                        >
+                            <option value="">Select thickness</option>
+                            <option value="40">40 microns</option>
+                            <option value="45">45 microns</option>
+                            <option value="50">50 microns</option>
+                            <option value="60">60 microns</option>
+                            <option value="70">70 microns</option>
+                        </select>
+                    </div>
+
+                    <div id="lengthResult" class="form-group" style="display: none; padding: 20px; background: var(--gray-50); border-radius: 8px; border: 2px solid var(--primary-blue); margin: 20px 0;">
+                        <h4 style="color: var(--primary-blue); margin-bottom: 10px;">Calculated Roll Length</h4>
+                        <p style="font-size: 1.5rem; font-weight: bold; color: var(--gray-900); margin: 0;">
+                            <span id="calculatedLength">0.000</span> km
+                        </p>
+                    </div>
+
                     <div class="button-group">
                         <button type="button" class="btn btn-secondary" onclick="goBackToJobNumber()">Back</button>
-                        <button type="button" class="btn btn-primary" onclick="proceedToRollSizes()">Next</button>
+                        <button type="button" class="btn btn-primary" id="proceedToSizesBtn" onclick="proceedToRollSizes()" disabled>OK - Proceed</button>
                     </div>
                 </div>
 
