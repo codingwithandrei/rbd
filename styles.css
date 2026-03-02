@@ -1140,9 +1140,13 @@ body {
     }
     
     .label-logo img {
-        max-width: 1in; /* Increased from 0.7in */
-        max-height: 0.9in; /* Increased from 0.6in */
+        /* Match QR size now that the logo image is tightly cropped */
+        width: 1.6in !important;
+        height: 1.6in !important;
+        max-width: 1.6in !important;
+        max-height: 1.6in !important;
         display: block;
+        object-fit: contain;
     }
     
     .label-qr-code {
@@ -1260,11 +1264,13 @@ body {
 }
 
 #printView .label-logo img {
-    max-width: 0.6in; /* Match print size */
-    max-height: 0.5in; /* Match print size */
-    height: auto;
-    width: auto;
+    /* Match print size (logo box same as QR) */
+    width: 1.6in;
+    height: 1.6in;
+    max-width: 1.6in;
+    max-height: 1.6in;
     display: block;
+    object-fit: contain;
 }
 
 #printView .label-qr-code {
@@ -1276,10 +1282,10 @@ body {
 
 #printView .label-qr-code canvas,
 #printView .label-qr-code img {
-    width: 1.2in !important; /* Match print size exactly */
-    height: 1.2in !important;
-    max-width: 1.2in !important;
-    max-height: 1.2in !important;
+    width: 1.6in !important;
+    height: 1.6in !important;
+    max-width: 1.6in !important;
+    max-height: 1.6in !important;
     display: block;
 }
 
