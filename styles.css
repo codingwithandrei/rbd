@@ -1177,7 +1177,8 @@ body {
     }
     
     .label-stock,
-    .label-lot {
+    .label-lot,
+    .label-date {
         font-size: 0.25in !important; /* Increased from 0.2in */
         font-weight: bold;
         text-align: left; /* Changed from center to left */
@@ -1300,7 +1301,8 @@ body {
 }
 
 #printView .label-stock,
-#printView .label-lot {
+#printView .label-lot,
+#printView .label-date {
     font-size: 0.18in !important; /* Match print size exactly */
     font-weight: bold;
     text-align: center;
@@ -1337,7 +1339,8 @@ body {
 }
 
 .label-stock,
-.label-lot {
+.label-lot,
+.label-date {
     font-size: 14pt;
     margin-bottom: 5px;
     font-weight: bold;

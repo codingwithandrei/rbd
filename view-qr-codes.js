@@ -337,6 +337,7 @@ function printBatch(batchId, event) {
                     <div class="label-info">
                         <div class="label-stock"><strong>Stock:</strong> ${qr.stockNumber || 'N/A'}</div>
                         <div class="label-lot"><strong>Lot:</strong> ${qr.lotNumber || 'N/A'}</div>
+                        <div class="label-date"><strong>Date:</strong> ${qr.createdAt ? new Date(qr.createdAt).toLocaleDateString() : 'N/A'}</div>
                     </div>
                 </div>
             `;
@@ -712,6 +713,7 @@ function printLabels() {
                     <div class="label-info">
                         <div class="label-stock"><strong>Stock:</strong> ${qr.stockNumber || 'N/A'}</div>
                         <div class="label-lot"><strong>Lot:</strong> ${qr.lotNumber || 'N/A'}</div>
+                        <div class="label-date"><strong>Date:</strong> ${qr.createdAt ? new Date(qr.createdAt).toLocaleDateString() : 'N/A'}</div>
                     </div>
                 </div>
             `;
