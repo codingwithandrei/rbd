@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Machine Map - RBD App</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .map-shell {
+            background: var(--white);
+            border-radius: 16px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            width: 100%;
+            max-width: 1040px;
+            margin: 0 auto;
+        }
+
+        .warehouse-map {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 1024 / 676;
+            background: #f3f4f6;
+            border: 2px solid #4b5563;
+            overflow: hidden;
+        }
+
+        .zone {
+            position: absolute;
+            border: 2px solid #6b7280;
+            background: rgba(255, 255, 255, 0.45);
+            color: #1f2937;
+            font-weight: 700;
+            font-size: 0.95rem;
+            padding: 8px;
+            text-align: center;
+        }
+
+        .zone-title {
+            font-size: 1.05rem;
+            margin-bottom: 10px;
+        }
+
+        .machine-chip {
+            display: inline-block;
+            border: 2px solid #6b7280;
+            border-radius: 6px;
+            background: #fff;
+            font-weight: 700;
+            padding: 8px 10px;
+            margin: 6px;
+            min-width: 110px;
+        }
+
+        .hotspot {
+            position: absolute;
+            cursor: pointer;
+            border: 2px dashed transparent;
+            transition: border-color 0.15s ease;
+        }
+
+        .hotspot:hover {
+            border-color: var(--primary-blue);
+            background: rgba(37, 99, 235, 0.08);
+        }
+
+        .machine-popover {
+            position: absolute;
+            width: 250px;
+            background: #fff;
+            border: 2px solid #d1d5db;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            padding: 12px;
+            z-index: 20;
+            pointer-events: none;
+        }
+
+        .machine-popover.hidden {
+            display: none;
+        }
+
+        .popover-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #111827;
+            margin-bottom: 8px;
+        }
+
+        .status-row {
+            margin-bottom: 10px;
+            color: #1f2937;
+            font-size: 0.92rem;
+        }
+
+        .status-pill {
+            display: inline-block;
+            border-radius: 999px;
+            padding: 4px 10px;
+            font-weight: 700;
+            font-size: 0.84rem;
+            margin-left: 6px;
+        }
+
+        .status-operational {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #86efac;
+        }
+
+        .status-down {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fca5a5;
+        }
+
+        .status-maintenance {
+            background: #fef3c7;
+            color: #92400e;
+            border: 1px solid #fcd34d;
+        }
+
+        .status-unknown {
+            background: #e5e7eb;
+            color: #374151;
+            border: 1px solid #d1d5db;
+        }
+
+        .photo-placeholder {
+            border: 2px dashed #9ca3af;
+            border-radius: 8px;
+            background: #f9fafb;
+            color: #6b7280;
+            min-height: 96px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            font-size: 0.86rem;
+            padding: 8px;
+        }
+
+        .machine-photo {
+            width: 100%;
+            border-radius: 8px;
+            border: 1px solid #d1d5db;
+            display: block;
+        }
+
+        @media (max-width: 900px) {
+            .zone {
+                font-size: 0.8rem;
+            }
+
+            .zone-title {
+                font-size: 0.9rem;
+            }
+
+            .machine-chip {
+                min-width: 84px;
+                padding: 6px 8px;
+                margin: 4px;
+                font-size: 0.74rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="floating-home-button" onclick="navigateTo('index.html')" title="Return to Home">
+        🏠 Home
+    </button>
+
+    <div class="container">
+        <header class="header">
+            <h1 class="logo">Machine Map</h1>
+            <p class="subtitle">Hover machines to view status and image placeholder</p>
+        </header>
+
+        <main class="main-content">
+            <div class="map-shell">
+                <div class="warehouse-map" id="warehouseMap">
+                    <div class="zone" style="left: 2%; top: 2%; width: 45%; height: 42%;">
+                        <div class="zone-title">Cutting Machines</div>
+                        <div class="machine-chip">SC New</div>
+                        <div class="machine-chip">DC</div>
+                        <div class="machine-chip">DC</div>
+                        <div class="machine-chip">SC</div>
+                        <div class="zone-title" style="margin-top: 10px;">Inspection Machines / Cage Cutter</div>
+                        <div class="machine-chip">Inspection #2</div>
+                        <div class="machine-chip">Inspection #1</div>
+                        <div class="machine-chip">Big Cutter</div>
+                    </div>
+
+                    <div class="zone" style="left: 3%; top: 48%; width: 32%; height: 16%; border-color: #86a487;">
+                        <div class="zone-title">Seaming</div>
+                        <div class="machine-chip">Seamer 2</div>
+                        <div class="machine-chip">Seamer 1</div>
+                    </div>
+
+                    <div class="zone" style="left: 3%; top: 66%; width: 23%; height: 22%; border-color: #d8b66e;">
+                        <div class="zone-title">Slitting and Seaming</div>
+                        <div class="machine-chip">Big Seamer</div>
+                        <div class="machine-chip">Slitter</div>
+                    </div>
+
+                    <div class="zone" style="left: 3%; top: 89%; width: 15%; height: 8%; border-color: #8b80b8;">
+                        <div class="zone-title">Sampling</div>
+                        <div class="machine-chip" id="heatShrinkMachine">Heat Shrink</div>
+                    </div>
+
+                    <div class="zone" style="left: 51%; top: 14%; width: 35%; height: 33%; border-color: #7cb4aa;">
+                        <div class="zone-title">Preforms</div>
+                        <div class="machine-chip">Double Lane</div>
+                        <div class="machine-chip">Single Lane</div>
+                        <div class="machine-chip">Single Lane</div>
+                    </div>
+
+                    <div class="zone" style="left: 66%; top: 53%; width: 30%; height: 32%;">
+                        <div class="zone-title">Print Room</div>
+                        <div class="machine-chip" style="height: 120px;">Digicon</div>
+                        <div class="machine-chip" style="height: 120px;">HP 6800</div>
+                        <div class="machine-chip" style="height: 120px;">HP 8000</div>
+                    </div>
+
+                    <div class="hotspot" id="heatShrinkHotspot" style="left: 4.5%; top: 93%; width: 12%; height: 4.2%;" aria-label="Heat Shrink hotspot"></div>
+
+                    <div class="machine-popover hidden" id="machinePopover">
+                        <div class="popover-title">Heat Shrink (Machine #1)</div>
+                        <div class="status-row">Status: <span id="machineStatus" class="status-pill status-unknown">Loading...</span></div>
+                        <img src="heat-shrink-machine.png" alt="Heat Shrink machine" class="machine-photo">
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <img src="rbd-logo.png.png" alt="RBD Logo" style="max-width: 80px; height: auto; margin-bottom: 8px; display: block; margin-left: auto; margin-right: auto;">
+            <p>&copy; 2025 RBD Packaging</p>
+        </footer>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="firebase-config.js"></script>
+    <script src="auth.js"></script>
+    <script src="app.js"></script>
+    <script>
+        const SHEET_ID = '1EB0YOVXuM26vHOcMiU4pZQzsPChS71WEl-pCQXfdCdI';
+        const SHEET_TAB = 'Asset List';
+        const MACHINE_ID = '1';
+
+        let heatShrinkStatus = 'Unknown';
+
+        function normalizeStatus(raw) {
+            const value = String(raw || '').trim().toLowerCase();
+            if (!value) return { text: 'Unknown', className: 'status-unknown' };
+            if (value.includes('operational')) return { text: 'Operational', className: 'status-operational' };
+            if (value.includes('maintenance')) return { text: 'Maintenance', className: 'status-maintenance' };
+            if (value.includes('down')) return { text: 'Down', className: 'status-down' };
+            return { text: raw, className: 'status-unknown' };
+        }
+
+        async function fetchHeatShrinkStatus() {
+            try {
+                const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(SHEET_TAB)}`;
+                const response = await fetch(url);
+                const text = await response.text();
+
+                const start = text.indexOf('{');
+                const end = text.lastIndexOf('}');
+                if (start === -1 || end === -1) {
+                    throw new Error('Unexpected Google Sheets response format.');
+                }
+
+                const payload = JSON.parse(text.slice(start, end + 1));
+                const rows = payload?.table?.rows || [];
+
+                for (const row of rows) {
+                    const machineStatus = row?.c?.[0]?.v;
+                    const machineNumber = row?.c?.[1]?.v;
+                    if (String(machineNumber).trim() === MACHINE_ID) {
+                        heatShrinkStatus = machineStatus || 'Unknown';
+                        break;
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to fetch machine status from Google Sheets:', error);
+                heatShrinkStatus = 'Unknown';
+            }
+        }
+
+        function showPopover() {
+            const hotspot = document.getElementById('heatShrinkHotspot');
+            const map = document.getElementById('warehouseMap');
+            const popover = document.getElementById('machinePopover');
+            const statusEl = document.getElementById('machineStatus');
+
+            const status = normalizeStatus(heatShrinkStatus);
+            statusEl.textContent = status.text;
+            statusEl.className = `status-pill ${status.className}`;
+
+            const hotspotRect = hotspot.getBoundingClientRect();
+            const mapRect = map.getBoundingClientRect();
+
+            popover.style.left = `${hotspotRect.left - mapRect.left + 18}px`;
+            popover.style.top = `${hotspotRect.top - mapRect.top - 170}px`;
+            popover.classList.remove('hidden');
+        }
+
+        function hidePopover() {
+            document.getElementById('machinePopover').classList.add('hidden');
+        }
+
+        document.addEventListener('DOMContentLoaded', async function() {
+            const authenticated = await Auth.requireAuth();
+            if (!authenticated) {
+                return;
+            }
+
+            await fetchHeatShrinkStatus();
+
+            const hotspot = document.getElementById('heatShrinkHotspot');
+            hotspot.addEventListener('mouseenter', showPopover);
+            hotspot.addEventListener('mouseleave', hidePopover);
+        });
+    </script>
+</body>
+</html>
