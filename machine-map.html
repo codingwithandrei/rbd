@@ -41,11 +41,55 @@
             cursor: pointer;
             border: 2px dashed transparent;
             transition: border-color 0.15s ease;
+            z-index: 5;
         }
 
         .hotspot:hover {
             border-color: var(--primary-blue);
             background: rgba(37, 99, 235, 0.08);
+        }
+
+        .hotspot-label,
+        .hotspot-resize {
+            display: none;
+        }
+
+        .warehouse-map.calibrate .hotspot {
+            border-color: rgba(239, 68, 68, 0.95);
+            background: rgba(239, 68, 68, 0.14);
+            cursor: move;
+        }
+
+        .warehouse-map.calibrate .hotspot-label {
+            display: block;
+            position: absolute;
+            left: 2px;
+            top: -20px;
+            font-size: 10px;
+            line-height: 1;
+            color: #fff;
+            background: #111827;
+            border-radius: 4px;
+            padding: 3px 5px;
+            white-space: nowrap;
+            pointer-events: none;
+        }
+
+        .warehouse-map.calibrate .hotspot-resize {
+            display: block;
+            position: absolute;
+            right: -2px;
+            bottom: -2px;
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+            background: #111827;
+            cursor: nwse-resize;
+        }
+
+        .hotspot.active {
+            outline: 2px solid #111827;
+            outline-offset: 1px;
         }
 
         .machine-popover {
@@ -131,6 +175,24 @@
             display: block;
         }
 
+        .calibration-toolbar {
+            display: none;
+            margin-bottom: 12px;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .calibration-toolbar.visible {
+            display: flex;
+        }
+
+        .calibration-note {
+            font-size: 0.85rem;
+            color: var(--gray-600);
+            margin-left: 8px;
+        }
+
         @media (max-width: 900px) {
             .machine-popover {
                 width: 220px;
@@ -151,15 +213,20 @@
 
         <main class="main-content">
             <div class="map-shell">
+                <div id="calibrationToolbar" class="calibration-toolbar">
+                    <button class="btn btn-secondary" type="button" id="toggleSnapBtn">Snap: Off</button>
+                    <button class="btn btn-secondary" type="button" id="copyConfigBtn">Copy Config</button>
+                    <button class="btn btn-secondary" type="button" id="resetConfigBtn">Reset</button>
+                    <span class="calibration-note">Calibration mode: drag hotspots to move, drag black corner to resize.</span>
+                </div>
                 <div class="warehouse-map" id="warehouseMap">
                     <img src="machine-layout-v3.png" alt="RBD machine layout" class="layout-base">
-
-                    <div class="hotspot" id="heatShrinkHotspot" style="left: 5.4%; top: 83.9%; width: 11.2%; height: 5.9%;" aria-label="Heat Shrink hotspot"></div>
 
                     <div class="machine-popover hidden" id="machinePopover">
                         <div class="popover-title">Heat Shrink (Machine #1)</div>
                         <div class="status-row">Status: <span id="machineStatus" class="status-pill status-unknown">Loading...</span></div>
-                        <img src="heat-shrink-machine.png" alt="Heat Shrink machine" class="machine-photo">
+                        <img id="machinePhoto" src="heat-shrink-machine.png" alt="Machine" class="machine-photo">
+                        <div id="machinePhotoPlaceholder" class="photo-placeholder" style="display:none;">Machine image placeholder</div>
                     </div>
                 </div>
             </div>
@@ -180,9 +247,43 @@
     <script>
         const SHEET_ID = '1EB0YOVXuM26vHOcMiU4pZQzsPChS71WEl-pCQXfdCdI';
         const SHEET_TAB = 'Asset List';
-        const MACHINE_ID = '1';
 
-        let heatShrinkStatus = 'Unknown';
+        // Hotspot positions are percentages relative to the layout image area.
+        // You can fine tune any box by adjusting left/top/width/height.
+        const MACHINE_CONFIG = [
+            { key: 'sc_fj_4', name: 'SC (FJ) #4', machineId: '12', left: 13.8, top: 11.13, width: 7.8, height: 5.8 },
+            { key: 'dc_3', name: 'DC #3', machineId: '11', left: 22.5, top: 10.82, width: 4.9, height: 5.8 },
+            { key: 'dc_2', name: 'DC #2', machineId: '10', left: 28, top: 10.67, width: 4.9, height: 5.8 },
+            { key: 'sc_1', name: 'SC #1', machineId: '9', left: 33.6, top: 10.37, width: 5.6, height: 5.8 },
+
+            { key: 'inspection_2', name: 'Inspection Machine 2', machineId: '8', left: 10.5, top: 23.61, width: 10.5, height: 8.27 },
+            { key: 'inspection_1', name: 'Inspection Machine 1', machineId: '7', left: 21.7, top: 23.31, width: 8.9, height: 7.66 },
+            { key: 'big_cutter', name: 'Big Cutter', machineId: '6', left: 31.3, top: 23.76, width: 10.1, height: 7.21 },
+
+            { key: 'double_lane_preform_1', name: 'Double Lane Preform #1', machineId: '13', left: 52.9, top: 20.58, width: 14.1, height: 6.55 },
+            { key: 'single_lane_preform_3', name: 'Single Lane Preform #3', machineId: '14', left: 68, top: 20.28, width: 13.2, height: 6.7 },
+            { key: 'single_lane_preform_2', name: 'Single Lane Preform #2', machineId: null, left: 68, top: 28.48, width: 13.1, height: 6.65 },
+
+            { key: 'seamer_2', name: 'Seamer 2', machineId: '5', left: 9.7, top: 43.68, width: 9.8, height: 5.4 },
+            { key: 'seamer_1', name: 'Seamer 1', machineId: '4', left: 21, top: 43.83, width: 9.8, height: 5.4 },
+
+            { key: 'digicon', name: 'DIGICON', machineId: '15', left: 67.3, top: 46.17, width: 8.7, height: 13.9 },
+            { key: 'hp_6900', name: 'HP 6900', machineId: '16', left: 76.8, top: 46.47, width: 8.3, height: 13.45 },
+            { key: 'hp_8600', name: 'HP 8600', machineId: '17', left: 85.9, top: 46.33, width: 7.6, height: 13.14 },
+
+            { key: 'big_seamer', name: 'Big Seamer', machineId: '3', left: 6.7, top: 58.37, width: 17, height: 5 },
+            { key: 'slitter', name: 'Slitter', machineId: '2', left: 6.8, top: 64.61, width: 17, height: 5 },
+
+            { key: 'heat_shrink', name: 'Heat Shrink Tun', machineId: '1', left: 6, top: 77.64, width: 12.3, height: 5.8, photo: 'heat-shrink-machine.png' }
+        ];
+
+        let machineStatusById = {};
+        let editableConfig = [];
+        let hotspotElements = [];
+        let isCalibrateMode = false;
+        let snapToGrid = false;
+        const GRID_STEP = 0.25; // percentage step
+        const FALLBACK_PHOTO = '';
 
         function normalizeStatus(raw) {
             const value = String(raw || '').trim().toLowerCase();
@@ -193,7 +294,7 @@
             return { text: raw, className: 'status-unknown' };
         }
 
-        async function fetchHeatShrinkStatus() {
+        async function fetchMachineStatuses() {
             try {
                 const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(SHEET_TAB)}`;
                 const response = await fetch(url);
@@ -207,32 +308,55 @@
 
                 const payload = JSON.parse(text.slice(start, end + 1));
                 const rows = payload?.table?.rows || [];
+                const statusMap = {};
 
                 for (const row of rows) {
-                    const machineStatus = row?.c?.[0]?.v;
-                    const machineNumber = row?.c?.[1]?.v;
-                    if (String(machineNumber).trim() === MACHINE_ID) {
-                        heatShrinkStatus = machineStatus || 'Unknown';
-                        break;
+                    // Sheet format: A = Machine #, B = Machine Status
+                    const machineNumber = row?.c?.[0]?.v;
+                    const status = row?.c?.[1]?.v;
+                    if (machineNumber !== null && machineNumber !== undefined) {
+                        statusMap[String(machineNumber).trim()] = status || 'Unknown';
                     }
                 }
+                machineStatusById = statusMap;
             } catch (error) {
                 console.error('Failed to fetch machine status from Google Sheets:', error);
-                heatShrinkStatus = 'Unknown';
+                machineStatusById = {};
             }
         }
 
-        function showPopover() {
-            const hotspot = document.getElementById('heatShrinkHotspot');
+        function showPopover(hotspotEl) {
+            if (isCalibrateMode) return;
             const map = document.getElementById('warehouseMap');
             const popover = document.getElementById('machinePopover');
+            const titleEl = popover.querySelector('.popover-title');
             const statusEl = document.getElementById('machineStatus');
+            const photoEl = document.getElementById('machinePhoto');
+            const placeholderEl = document.getElementById('machinePhotoPlaceholder');
 
-            const status = normalizeStatus(heatShrinkStatus);
+            const machineName = hotspotEl.dataset.machineName || 'Machine';
+            const machineId = hotspotEl.dataset.machineId || '';
+            const photo = hotspotEl.dataset.photo || FALLBACK_PHOTO;
+
+            titleEl.textContent = machineId
+                ? `${machineName} (Machine #${machineId})`
+                : `${machineName} (Machine ID not linked)`;
+
+            const rawStatus = machineId ? (machineStatusById[machineId] || 'Unknown') : 'Unknown';
+            const status = normalizeStatus(rawStatus);
             statusEl.textContent = status.text;
             statusEl.className = `status-pill ${status.className}`;
 
-            const hotspotRect = hotspot.getBoundingClientRect();
+            if (photo) {
+                photoEl.src = photo;
+                photoEl.style.display = 'block';
+                placeholderEl.style.display = 'none';
+            } else {
+                photoEl.style.display = 'none';
+                placeholderEl.style.display = 'flex';
+            }
+
+            const hotspotRect = hotspotEl.getBoundingClientRect();
             const mapRect = map.getBoundingClientRect();
 
             popover.style.left = `${hotspotRect.left - mapRect.left + 18}px`;
@@ -244,17 +368,180 @@
             document.getElementById('machinePopover').classList.add('hidden');
         }
 
+        function round2(value) {
+            return Math.round(value * 100) / 100;
+        }
+
+        function maybeSnap(value) {
+            if (!snapToGrid) return value;
+            return Math.round(value / GRID_STEP) * GRID_STEP;
+        }
+
+        function clamp(value, min, max) {
+            return Math.min(max, Math.max(min, value));
+        }
+
+        function updateHotspotStyle(spot, cfg) {
+            spot.style.left = `${cfg.left}%`;
+            spot.style.top = `${cfg.top}%`;
+            spot.style.width = `${cfg.width}%`;
+            spot.style.height = `${cfg.height}%`;
+        }
+
+        function beginDrag(event, spot, cfg) {
+            if (!isCalibrateMode) return;
+            event.preventDefault();
+            event.stopPropagation();
+            spot.classList.add('active');
+            const mapRect = spot.parentElement.getBoundingClientRect();
+            const startX = event.clientX;
+            const startY = event.clientY;
+            const startLeft = cfg.left;
+            const startTop = cfg.top;
+
+            function onMove(moveEvent) {
+                const dxPx = moveEvent.clientX - startX;
+                const dyPx = moveEvent.clientY - startY;
+                let newLeft = startLeft + (dxPx / mapRect.width) * 100;
+                let newTop = startTop + (dyPx / mapRect.height) * 100;
+                newLeft = clamp(maybeSnap(newLeft), 0, 100 - cfg.width);
+                newTop = clamp(maybeSnap(newTop), 0, 100 - cfg.height);
+                cfg.left = round2(newLeft);
+                cfg.top = round2(newTop);
+                updateHotspotStyle(spot, cfg);
+            }
+
+            function onUp() {
+                spot.classList.remove('active');
+                window.removeEventListener('mousemove', onMove);
+                window.removeEventListener('mouseup', onUp);
+            }
+
+            window.addEventListener('mousemove', onMove);
+            window.addEventListener('mouseup', onUp);
+        }
+
+        function beginResize(event, spot, cfg) {
+            if (!isCalibrateMode) return;
+            event.preventDefault();
+            event.stopPropagation();
+            spot.classList.add('active');
+            const mapRect = spot.parentElement.getBoundingClientRect();
+            const startX = event.clientX;
+            const startY = event.clientY;
+            const startWidth = cfg.width;
+            const startHeight = cfg.height;
+
+            function onMove(moveEvent) {
+                const dxPx = moveEvent.clientX - startX;
+                const dyPx = moveEvent.clientY - startY;
+                let newWidth = startWidth + (dxPx / mapRect.width) * 100;
+                let newHeight = startHeight + (dyPx / mapRect.height) * 100;
+                newWidth = clamp(maybeSnap(newWidth), 1, 100 - cfg.left);
+                newHeight = clamp(maybeSnap(newHeight), 1, 100 - cfg.top);
+                cfg.width = round2(newWidth);
+                cfg.height = round2(newHeight);
+                updateHotspotStyle(spot, cfg);
+            }
+
+            function onUp() {
+                spot.classList.remove('active');
+                window.removeEventListener('mousemove', onMove);
+                window.removeEventListener('mouseup', onUp);
+            }
+
+            window.addEventListener('mousemove', onMove);
+            window.addEventListener('mouseup', onUp);
+        }
+
+        function exportConfig() {
+            const output = editableConfig.map((cfg) => ({
+                key: cfg.key,
+                name: cfg.name,
+                machineId: cfg.machineId,
+                left: round2(cfg.left),
+                top: round2(cfg.top),
+                width: round2(cfg.width),
+                height: round2(cfg.height),
+                ...(cfg.photo ? { photo: cfg.photo } : {})
+            }));
+            const text = JSON.stringify(output, null, 4);
+            navigator.clipboard.writeText(text)
+                .then(() => alert('Updated MACHINE_CONFIG copied to clipboard.'))
+                .catch(() => alert('Could not copy automatically. Open console output and copy manually.'));
+            console.log('Updated MACHINE_CONFIG:\n', text);
+        }
+
+        function resetConfig() {
+            editableConfig = MACHINE_CONFIG.map((m) => ({ ...m }));
+            hotspotElements.forEach(({ spot, cfg }) => updateHotspotStyle(spot, cfg));
+        }
+
+        function setupCalibrationUI() {
+            const toolbar = document.getElementById('calibrationToolbar');
+            toolbar.classList.add('visible');
+
+            document.getElementById('toggleSnapBtn').addEventListener('click', function() {
+                snapToGrid = !snapToGrid;
+                this.textContent = `Snap: ${snapToGrid ? 'On' : 'Off'}`;
+            });
+            document.getElementById('copyConfigBtn').addEventListener('click', exportConfig);
+            document.getElementById('resetConfigBtn').addEventListener('click', resetConfig);
+        }
+
+        function renderHotspots() {
+            const map = document.getElementById('warehouseMap');
+            editableConfig = MACHINE_CONFIG.map((m) => ({ ...m }));
+            hotspotElements = [];
+
+            editableConfig.forEach((machine) => {
+                const spot = document.createElement('div');
+                spot.className = 'hotspot';
+                updateHotspotStyle(spot, machine);
+                spot.setAttribute('aria-label', machine.name);
+                spot.dataset.machineName = machine.name;
+                spot.dataset.machineId = machine.machineId || '';
+                spot.dataset.photo = machine.photo || '';
+
+                spot.addEventListener('mouseenter', () => showPopover(spot));
+                spot.addEventListener('mouseleave', hidePopover);
+
+                if (isCalibrateMode) {
+                    const label = document.createElement('div');
+                    label.className = 'hotspot-label';
+                    label.textContent = machine.machineId ? `${machine.name} (#${machine.machineId})` : `${machine.name} (no id)`;
+                    spot.appendChild(label);
+
+                    const handle = document.createElement('div');
+                    handle.className = 'hotspot-resize';
+                    spot.appendChild(handle);
+
+                    spot.addEventListener('mousedown', (e) => {
+                        if (e.target === handle) return;
+                        beginDrag(e, spot, machine);
+                    });
+                    handle.addEventListener('mousedown', (e) => beginResize(e, spot, machine));
+                }
+
+                map.appendChild(spot);
+                hotspotElements.push({ spot, cfg: machine });
+            });
+        }
+
         document.addEventListener('DOMContentLoaded', async function() {
             const authenticated = await Auth.requireAuth();
             if (!authenticated) {
                 return;
             }
 
-            await fetchHeatShrinkStatus();
+            isCalibrateMode = new URLSearchParams(window.location.search).get('calibrate') === '1';
+            if (isCalibrateMode) {
+                document.getElementById('warehouseMap').classList.add('calibrate');
+                setupCalibrationUI();
+            }
 
-            const hotspot = document.getElementById('heatShrinkHotspot');
-            hotspot.addEventListener('mouseenter', showPopover);
-            hotspot.addEventListener('mouseleave', hidePopover);
+            renderHotspots();
+            await fetchMachineStatuses();
         });
     </script>
 </body>
