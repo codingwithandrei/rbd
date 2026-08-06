@@ -3,6 +3,27 @@ let allQRCodes = [];
 let filteredQRCodes = [];
 let searchQuery = '';
 
+const PRODUCTION_URL = 'https://rbd-weld.vercel.app';
+
+function resolveProductionQrUrl(qr) {
+    let qrUrl = qr.qrUrl || '';
+    if (qrUrl && (qrUrl.includes('localhost') || qrUrl.includes('127.0.0.1') || qrUrl.includes('192.168.'))) {
+        try {
+            const urlObj = new URL(qrUrl);
+            const qrParam = urlObj.searchParams.get('qr') || qr.qrValue;
+            const lotParam = urlObj.searchParams.get('lot') || qr.lotNumber;
+            const stockParam = urlObj.searchParams.get('stock') || qr.stockNumber;
+            return `${PRODUCTION_URL}/index.html?qr=${encodeURIComponent(qrParam)}&lot=${encodeURIComponent(lotParam)}&stock=${encodeURIComponent(stockParam)}`;
+        } catch (e) {
+            // fall through and rebuild
+        }
+    }
+    if (!qrUrl) {
+        return `${PRODUCTION_URL}/index.html?qr=${encodeURIComponent(qr.qrValue)}&lot=${encodeURIComponent(qr.lotNumber)}&stock=${encodeURIComponent(qr.stockNumber)}`;
+    }
+    return qrUrl;
+}
+
 document.addEventListener('DOMContentLoaded', async function() {
     await loadQRCodes();
 });
@@ -268,24 +289,16 @@ function generateBatchQRCodes(container, qrCodes, startIndex) {
                 <p><strong>Stock Number:</strong> ${qr.stockNumber || 'N/A'}</p>
                 <p><strong>Lot Number:</strong> ${qr.lotNumber || 'N/A'}</p>
                 <p><strong>QR Value:</strong> ${qr.qrValue || 'N/A'}</p>
-                ${qr.qrUrl ? `<p style="font-size: 0.85rem; color: var(--gray-600); margin-top: 8px; word-break: break-all;"><strong>URL:</strong> ${qr.qrUrl}</p>` : ''}
+                <p style="font-size: 0.85rem; color: var(--gray-600); margin-top: 8px; word-break: break-all;"><strong>URL:</strong> ${resolveProductionQrUrl(qr)}</p>
                 ${qr.createdAt ? `<p style="font-size: 0.85rem; color: var(--gray-600); margin-top: 4px;"><strong>Created:</strong> ${new Date(qr.createdAt).toLocaleString()}</p>` : ''}
             </div>
             <div id="qrcode-display-${globalIndex}" class="qrcode-container"></div>
         `;
         container.appendChild(qrCard);
 
-        // Generate QR code image
+        // Generate QR code image — always encode production URL (rewrite stored localhost)
         const qrElement = document.getElementById(`qrcode-display-${globalIndex}`);
-        let qrUrl = qr.qrUrl;
-        if (!qrUrl) {
-            const productionUrl = 'https://rbd-weld.vercel.app';
-            const isLocalhost = window.location.hostname === 'localhost' || 
-                               window.location.hostname === '127.0.0.1' || 
-                               window.location.hostname.includes('192.168.');
-            const baseUrl = isLocalhost ? window.location.origin : productionUrl;
-            qrUrl = `${baseUrl}/index.html?qr=${encodeURIComponent(qr.qrValue)}&lot=${encodeURIComponent(qr.lotNumber)}&stock=${encodeURIComponent(qr.stockNumber)}`;
-        }
+        const qrUrl = resolveProductionQrUrl(qr);
         
         try {
             new QRCode(qrElement, {
@@ -599,12 +612,9 @@ async function importQRCodesToDatabase(qrCodes) {
     const batchId = `batch-import-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     console.log('Batch ID for CSV import:', batchId);
     
-    // Get production URL for QR code generation
+    // Always use production URL so scanned QRs open the live site, even if generated locally
     const productionUrl = 'https://rbd-weld.vercel.app';
-    const isLocalhost = window.location.hostname === 'localhost' || 
-                       window.location.hostname === '127.0.0.1' || 
-                       window.location.hostname.includes('192.168.');
-    const baseUrl = isLocalhost ? window.location.origin : productionUrl;
+    const baseUrl = productionUrl;
     
     for (const qr of qrCodes) {
         try {

@@ -281,12 +281,9 @@ async function importQRCodesToDatabase(qrCodes) {
     const batchId = `batch-import-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     console.log('Batch ID for CSV import:', batchId);
     
-    // Get production URL for QR code generation
+    // Always use production URL so scanned QRs open the live site, even if generated locally
     const productionUrl = 'https://rbd-weld.vercel.app';
-    const isLocalhost = window.location.hostname === 'localhost' || 
-                       window.location.hostname === '127.0.0.1' || 
-                       window.location.hostname.includes('192.168.');
-    const baseUrl = isLocalhost ? window.location.origin : productionUrl;
+    const baseUrl = productionUrl;
     
     for (const qr of qrCodes) {
         try {
@@ -375,16 +372,9 @@ async function generateQRCodes() {
         // Create QR value (lot-stock format)
         const qrValue = `${data.lotNumber}-${data.stockNumber}`;
         
-        // Get base URL - use production domain for QR codes
-        // IMPORTANT: Update this to your actual Vercel deployment URL
-        const productionUrl = 'https://rbd-weld.vercel.app'; // Change this to your actual domain
-        const isLocalhost = window.location.hostname === 'localhost' || 
-                           window.location.hostname === '127.0.0.1' || 
-                           window.location.hostname.includes('192.168.');
-        
-        // Use production URL for QR codes (so they always work when scanned)
-        // Only use localhost if actually running locally
-        const baseUrl = isLocalhost ? window.location.origin : productionUrl;
+        // Always use production URL so scanned QRs open the live site, even if generated locally
+        const productionUrl = 'https://rbd-weld.vercel.app';
+        const baseUrl = productionUrl;
         
         // Create QR code data - always use full URL so it works when scanned from phone
         const qrData = `${baseUrl}/index.html?qr=${encodeURIComponent(qrValue)}&lot=${encodeURIComponent(data.lotNumber)}&stock=${encodeURIComponent(data.stockNumber)}`;
@@ -404,8 +394,8 @@ async function generateQRCodes() {
                 <h4>QR Code ${index + 1}</h4>
                 <p><strong>Lot:</strong> ${data.lotNumber}</p>
                 <p><strong>Stock:</strong> ${data.stockNumber}</p>
-                <p style="font-size: 0.85rem; color: var(--gray-600); margin-top: 8px;">
-                    <strong>Data:</strong> When scanned, displays lot and stock numbers
+                <p style="font-size: 0.85rem; color: var(--gray-600); margin-top: 8px; word-break: break-all;">
+                    <strong>URL:</strong> ${qrData}
                 </p>
             </div>
             <div id="qrcode-${index}" class="qrcode-container"></div>
@@ -474,7 +464,16 @@ async function generateQRCodes() {
                         alert(`ERROR: Failed to save QR code ${qr.qrValue}. Check console.`);
                     }
                 } else {
-                    console.log(`QR code ${qr.qrValue} already exists, skipping`);
+                    console.log(`QR code ${qr.qrValue} already exists, updating URL if needed`);
+                    const existingUrl = existing.qrUrl || '';
+                    if (!existingUrl || existingUrl.includes('localhost') || existingUrl.includes('127.0.0.1') || existingUrl.includes('192.168.')) {
+                        try {
+                            await DB.qrCodes.update(qr.qrValue, { qrUrl: qr.qrData });
+                            console.log(`✓ Updated QR URL for ${qr.qrValue} to production`);
+                        } catch (updateError) {
+                            console.error(`Error updating QR URL for ${qr.qrValue}:`, updateError);
+                        }
+                    }
                 }
             }
             

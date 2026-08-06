@@ -395,6 +395,23 @@ const DB = {
                 console.error('Error creating QR code:', error);
                 throw new Error('Failed to save QR code: ' + error.message);
             }
+        },
+
+        // Update QR code fields by qrValue
+        async update(qrValue, data) {
+            try {
+                const db = DB._getDB();
+                const snapshot = await db.collection('qrCodes').where('qrValue', '==', qrValue).limit(1).get();
+                if (snapshot.empty) {
+                    return null;
+                }
+                await snapshot.docs[0].ref.update(data);
+                const updated = await snapshot.docs[0].ref.get();
+                return DB._docToObject(updated);
+            } catch (error) {
+                console.error('Error updating QR code:', error);
+                throw error;
+            }
         }
     },
 
