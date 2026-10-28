@@ -29,3 +29,6 @@ build/
 # Vercel
 .vercel
 
+# Claude Code local tooling (dev server, launch config)
+.claude/
+

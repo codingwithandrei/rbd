@@ -104,7 +104,7 @@
                     <h3 class="form-title" style="font-size: 1.5rem; margin-bottom: 20px;">Generated QR Codes</h3>
                     <p class="form-subtitle" style="margin-bottom: 30px;">Scan these QR codes to view lot and stock numbers</p>
 
-                    <div id="qrCodesDisplay" class="qr-codes-grid"></div>
+                    <div id="qrCodesDisplay" class="label-preview"></div>
 
                     <div class="button-group" style="margin-top: 30px;">
                         <button type="button" class="btn btn-primary" onclick="navigateTo('index.html')">Return to Home</button>
@@ -122,6 +122,9 @@
         </footer>
     </div>
 
+    <!-- Print View (hidden, used for printing labels) -->
+    <div id="printView" style="display: none;"></div>
+
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
@@ -135,7 +138,7 @@
             await Auth.requireAuth();
         });
     </script>
-    <script src="generate-qr.js?v=20260806"></script>
+    <script src="generate-qr.js?v=20261028"></script>
 </body>
 </html>
 

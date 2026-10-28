@@ -386,43 +386,8 @@ async function generateQRCodes() {
             timestamp: new Date().toISOString()
         });
 
-        // Create QR code container
-        const qrCard = document.createElement('div');
-        qrCard.className = 'qr-code-card';
-        qrCard.innerHTML = `
-            <div class="qr-code-info">
-                <h4>QR Code ${index + 1}</h4>
-                <p><strong>Lot:</strong> ${data.lotNumber}</p>
-                <p><strong>Stock:</strong> ${data.stockNumber}</p>
-                <p style="font-size: 0.85rem; color: var(--gray-600); margin-top: 8px; word-break: break-all;">
-                    <strong>URL:</strong> ${qrData}
-                </p>
-            </div>
-            <div id="qrcode-${index}" class="qrcode-container"></div>
-        `;
-        displayContainer.appendChild(qrCard);
-
-        // Generate QR code using QRCode.js library
-        const qrElement = document.getElementById(`qrcode-${index}`);
-        
-        // Clear any existing content
-        qrElement.innerHTML = '';
-        
-        // Create QR code with URL (will open page when scanned)
-        // Also include JSON data as fallback for direct scanning
-        try {
-            new QRCode(qrElement, {
-                text: qrData, // URL format for web scanning
-                width: 200,
-                height: 200,
-                colorDark: '#1f2937',
-                colorLight: '#ffffff',
-                correctLevel: QRCode.CorrectLevel.H
-            });
-        } catch (error) {
-            console.error('QR Code generation error:', error);
-            qrElement.innerHTML = '<p style="color: var(--error-red);">Error generating QR code</p>';
-        }
+        // Show the QR as a label preview (same layout as the printed label)
+        const qrElement = appendLabel(displayContainer, data, qrData, `qrcode-${index}`);
 
         generatedQRCodes.push({
             ...data,
@@ -501,7 +466,64 @@ function createNewQRCodes() {
     generatedQRCodes = [];
 }
 
+// Build a 4x3 label (logo, QR, stock/lot/date) - same markup as printBatch() in view-qr-codes.js
+function appendLabel(container, data, qrUrl, qrElementId) {
+    const labelDiv = document.createElement('div');
+    labelDiv.className = 'label-print-item';
+    labelDiv.innerHTML = `
+        <div class="label-content">
+            <div class="label-top-section">
+                <div class="label-logo">
+                    <img src="rbd-logo.png.png" alt="RBD Logo" />
+                </div>
+                <div class="label-qr-code" id="${qrElementId}"></div>
+            </div>
+            <div class="label-info">
+                <div class="label-stock"><strong>Stock:</strong> ${data.stockNumber}</div>
+                <div class="label-lot"><strong>Lot:</strong> ${data.lotNumber}</div>
+                <div class="label-date"><strong>Date:</strong> ${new Date().toLocaleDateString()}</div>
+            </div>
+        </div>
+    `;
+    container.appendChild(labelDiv);
+
+    const qrElement = document.getElementById(qrElementId);
+    try {
+        new QRCode(qrElement, {
+            text: qrUrl,
+            width: 200,
+            height: 200,
+            colorDark: '#000000',
+            colorLight: '#ffffff',
+            correctLevel: QRCode.CorrectLevel.H
+        });
+    } catch (error) {
+        console.error('QR Code generation error:', error);
+        qrElement.innerHTML = '<p style="color: var(--error-red);">QR Error</p>';
+    }
+    return qrElement;
+}
+
+// Print the generated labels through #printView (print CSS only shows that element)
 function printQRCodes() {
-    window.print();
+    const printView = document.getElementById('printView');
+    printView.innerHTML = '';
+    generatedQRCodes.forEach((qr, index) => {
+        appendLabel(printView, qr, qr.qrData, `print-qr-${index}`);
+    });
+
+    setTimeout(() => {
+        printView.style.display = 'block';
+        printView.style.visibility = 'visible';
+
+        setTimeout(() => {
+            window.print();
+
+            setTimeout(() => {
+                printView.style.display = 'none';
+                printView.style.visibility = 'hidden';
+            }, 1000);
+        }, 300);
+    }, 800);
 }
 

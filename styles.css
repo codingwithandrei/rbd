@@ -1040,21 +1040,16 @@ body {
 
 /* Print-friendly Label Styles - Focus on 4x3 inch output */
 @media print {
-    /* Hide everything except print view */
-    body * {
-        visibility: hidden;
+    /* Hide everything except print view. display:none (not visibility:hidden) so the
+       hidden page takes no space - otherwise it prints as extra blank pages */
+    body > *:not(#printView) {
+        display: none !important;
     }
-    
-    #printView,
-    #printView * {
-        visibility: visible !important;
-    }
-    
+
     /* Remove ALL container styling - no scrollbars, no padding, no background */
     #printView {
-        position: absolute !important;
-        left: 0 !important;
-        top: 0 !important;
+        display: block !important;
+        position: static !important;
         width: 100% !important;
         height: auto !important;
         margin: 0 !important;
@@ -1092,11 +1087,8 @@ body {
         height: 3in !important;
         padding: 0.1in;
         margin: 0 !important;
-        position: absolute;
-        left: 0;
-        top: 0;
+        position: static !important;
         page-break-after: always;
-        page-break-before: always;
         box-sizing: border-box;
         background: white;
         overflow: hidden;
@@ -1105,8 +1097,9 @@ body {
         overflow-y: hidden !important;
     }
     
-    .label-print-item:first-child {
-        page-break-before: auto;
+    /* No break after the last label, so no trailing blank page */
+    #printView .label-print-item:last-child {
+        page-break-after: auto;
     }
     
     /* Content fills the 4x3 space */
@@ -1218,7 +1211,8 @@ body {
 
 /* Screen preview styles - EXACT 1:1 match with print (using same units) */
 /* These styles are for screen display, but use the same structure as print */
-#printView .label-print-item {
+#printView .label-print-item,
+.label-preview .label-print-item {
     display: block;
     width: 4in;  /* Use inches to match print exactly */
     height: 3in; /* Use inches to match print exactly */
@@ -1235,7 +1229,8 @@ body {
 }
 
 /* Screen preview content - matches print layout exactly */
-#printView .label-content {
+#printView .label-content,
+.label-preview .label-content {
     display: flex;
     flex-direction: column;
     align-items: stretch;
@@ -1247,7 +1242,8 @@ body {
 }
 
 /* Top section: Logo and QR side-by-side */
-#printView .label-top-section {
+#printView .label-top-section,
+.label-preview .label-top-section {
     display: flex;
     flex-direction: row;
     align-items: center;
@@ -1257,14 +1253,16 @@ body {
     margin-bottom: 0.1in; /* Match print margin */
 }
 
-#printView .label-logo {
+#printView .label-logo,
+.label-preview .label-logo {
     flex: 0 0 auto;
     display: flex;
     align-items: center;
     justify-content: flex-start;
 }
 
-#printView .label-logo img {
+#printView .label-logo img,
+.label-preview .label-logo img {
     /* Match print size (logo box same as QR) */
     width: 1.6in;
     height: 1.6in;
@@ -1274,7 +1272,8 @@ body {
     object-fit: contain;
 }
 
-#printView .label-qr-code {
+#printView .label-qr-code,
+.label-preview .label-qr-code {
     flex: 0 0 auto;
     display: flex;
     align-items: center;
@@ -1282,7 +1281,9 @@ body {
 }
 
 #printView .label-qr-code canvas,
-#printView .label-qr-code img {
+#printView .label-qr-code img,
+.label-preview .label-qr-code canvas,
+.label-preview .label-qr-code img {
     width: 1.6in !important;
     height: 1.6in !important;
     max-width: 1.6in !important;
@@ -1290,7 +1291,8 @@ body {
     display: block;
 }
 
-#printView .label-info {
+#printView .label-info,
+.label-preview .label-info {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1302,7 +1304,10 @@ body {
 
 #printView .label-stock,
 #printView .label-lot,
-#printView .label-date {
+#printView .label-date,
+.label-preview .label-stock,
+.label-preview .label-lot,
+.label-preview .label-date {
     font-size: 0.18in !important; /* Match print size exactly */
     font-weight: bold;
     text-align: center;
@@ -1311,6 +1316,30 @@ body {
     color: #000;
     display: block;
     width: 100%;
+}
+
+/* On-page label preview (generate page): outline so the 4x3 label edge is visible */
+.label-preview .label-print-item {
+    border: 1px solid var(--gray-200);
+    border-radius: 4px;
+    max-width: 100%;
+}
+
+/* Phones: shrink the on-screen preview to fit (printed label size is unaffected) */
+@media screen and (max-width: 480px) {
+    .label-preview .label-print-item {
+        width: 100%;
+        height: auto;
+    }
+
+    .label-preview .label-logo img,
+    .label-preview .label-qr-code canvas,
+    .label-preview .label-qr-code img {
+        width: 32vw !important;
+        height: 32vw !important;
+        max-width: 32vw !important;
+        max-height: 32vw !important;
+    }
 }
 
 /* Legacy styles for other uses (kept for compatibility) */

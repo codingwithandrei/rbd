@@ -217,8 +217,8 @@ function displayQRCodes(qrCodes) {
 
             // Create batch grid container (initially hidden)
             const batchGrid = document.createElement('div');
-            batchGrid.className = `batch-grid-${batchId}`;
-            batchGrid.style.cssText = 'display: none; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; margin-bottom: 20px; padding: 10px 0;';
+            batchGrid.className = `batch-grid-${batchId} label-preview`;
+            batchGrid.style.cssText = 'display: none; grid-template-columns: repeat(auto-fill, minmax(min(4in, 100%), 1fr)); gap: 0 20px; margin-bottom: 20px; padding: 0;';
             container.appendChild(batchGrid);
 
             // Toggle functionality
@@ -268,8 +268,8 @@ function displayQRCodes(qrCodes) {
         container.appendChild(unbatchedHeader);
 
         const unbatchedGrid = document.createElement('div');
-        unbatchedGrid.className = 'qr-codes-grid';
-        unbatchedGrid.style.cssText = 'display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; margin-bottom: 30px;';
+        unbatchedGrid.className = 'qr-codes-grid label-preview';
+        unbatchedGrid.style.cssText = 'display: grid; grid-template-columns: repeat(auto-fill, minmax(min(4in, 100%), 1fr)); gap: 0 20px; margin-bottom: 30px;';
         container.appendChild(unbatchedGrid);
 
         generateBatchQRCodes(unbatchedGrid, unbatched, globalIndex);
@@ -280,32 +280,37 @@ function displayQRCodes(qrCodes) {
 function generateBatchQRCodes(container, qrCodes, startIndex) {
     qrCodes.forEach((qr, index) => {
         const globalIndex = startIndex + index;
-        const qrCard = document.createElement('div');
-        qrCard.className = 'qr-code-card';
-        qrCard.id = `qr-card-${globalIndex}`;
-        qrCard.innerHTML = `
-            <div class="qr-code-info">
-                <h4>QR Code ${index + 1}${qrCodes.length > 1 ? ` of ${qrCodes.length}` : ''}</h4>
-                <p><strong>Stock Number:</strong> ${qr.stockNumber || 'N/A'}</p>
-                <p><strong>Lot Number:</strong> ${qr.lotNumber || 'N/A'}</p>
-                <p><strong>QR Value:</strong> ${qr.qrValue || 'N/A'}</p>
-                <p style="font-size: 0.85rem; color: var(--gray-600); margin-top: 8px; word-break: break-all;"><strong>URL:</strong> ${resolveProductionQrUrl(qr)}</p>
-                ${qr.createdAt ? `<p style="font-size: 0.85rem; color: var(--gray-600); margin-top: 4px;"><strong>Created:</strong> ${new Date(qr.createdAt).toLocaleString()}</p>` : ''}
+        // Show as a label preview - same layout as the printed label (see printBatch)
+        const labelDiv = document.createElement('div');
+        labelDiv.className = 'label-print-item';
+        labelDiv.id = `qr-card-${globalIndex}`;
+        labelDiv.innerHTML = `
+            <div class="label-content">
+                <div class="label-top-section">
+                    <div class="label-logo">
+                        <img src="rbd-logo.png.png" alt="RBD Logo" />
+                    </div>
+                    <div class="label-qr-code" id="qrcode-display-${globalIndex}"></div>
+                </div>
+                <div class="label-info">
+                    <div class="label-stock"><strong>Stock:</strong> ${qr.stockNumber || 'N/A'}</div>
+                    <div class="label-lot"><strong>Lot:</strong> ${qr.lotNumber || 'N/A'}</div>
+                    <div class="label-date"><strong>Date:</strong> ${qr.createdAt ? new Date(qr.createdAt).toLocaleDateString() : 'N/A'}</div>
+                </div>
             </div>
-            <div id="qrcode-display-${globalIndex}" class="qrcode-container"></div>
         `;
-        container.appendChild(qrCard);
+        container.appendChild(labelDiv);
 
         // Generate QR code image — always encode production URL (rewrite stored localhost)
         const qrElement = document.getElementById(`qrcode-display-${globalIndex}`);
         const qrUrl = resolveProductionQrUrl(qr);
-        
+
         try {
             new QRCode(qrElement, {
                 text: qrUrl,
                 width: 200,
                 height: 200,
-                colorDark: '#1f2937',
+                colorDark: '#000000',
                 colorLight: '#ffffff',
                 correctLevel: QRCode.CorrectLevel.H
             });
