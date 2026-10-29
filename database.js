@@ -3,7 +3,18 @@
 
 const DB = {
     storageType: 'firestore',
-    
+
+    // Departments a roll moves through; each scan records one automatically
+    DEPARTMENTS: {
+        INVENTORY: 'Inventory',   // master roll received
+        SLITTING: 'Slitting',     // master roll slit into child rolls
+        PRINTING: 'Printing',     // child roll sent to print presses (final step)
+        PRODUCTION: 'Production'  // child roll used on a job without printing (final step)
+    },
+
+    // Default slit widths (mm) - these fit the print presses
+    PRINT_SIZES: [225, 241, 325],
+
     // Get Firestore instance
     _getDB() {
         const db = getFirestore();
@@ -137,6 +148,7 @@ const DB = {
                     stockNumber: data.stockNumber,
                     lotNumber: data.lotNumber,
                     status: 'registered',
+                    currentDepartment: DB.DEPARTMENTS.INVENTORY,
                     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                     registeredAt: firebase.firestore.FieldValue.serverTimestamp()
                 };
@@ -166,6 +178,7 @@ const DB = {
                 const docRef = snapshot.docs[0].ref;
                 await docRef.update({
                     status: 'slit',
+                    currentDepartment: DB.DEPARTMENTS.SLITTING,
                     slitAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
                 
@@ -269,6 +282,7 @@ const DB = {
                         masterRollQR: masterRollQR,
                         width: width,
                         status: 'AVAILABLE',
+                        currentDepartment: DB.DEPARTMENTS.SLITTING,
                         jobId: jobId || `job-${timestamp}`,
                         createdAt: firebase.firestore.FieldValue.serverTimestamp()
                     };
@@ -287,13 +301,15 @@ const DB = {
             }
         },
 
-        // Mark a child roll as used
-        async markAsUsed(childRollId, jobId = null) {
+        // Mark a child roll as used - department is Printing or Production (both final)
+        async markAsUsed(childRollId, jobId = null, department = DB.DEPARTMENTS.PRODUCTION) {
             try {
                 const db = DB._getDB();
                 const docRef = db.collection('childRolls').doc(childRollId);
                 const updateData = {
                     status: 'USED',
+                    currentDepartment: department,
+                    printed: department === DB.DEPARTMENTS.PRINTING,
                     usedAt: firebase.firestore.FieldValue.serverTimestamp()
                 };
                 
@@ -307,8 +323,9 @@ const DB = {
                 const updated = await docRef.get();
                 return DB._docToObject(updated);
             } catch (error) {
+                // Rethrow so the page shows the failure instead of a false "marked as used"
                 console.error('Error marking child roll as used:', error);
-                return null;
+                throw new Error('Failed to mark roll as used: ' + error.message);
             }
         }
     },
@@ -437,6 +454,8 @@ const DB = {
                     qrValue: data.qrValue,
                     action: data.action,
                     childRollId: data.childRollId || null,
+                    jobId: data.jobId || null,
+                    department: data.department || null,
                     timestamp: firebase.firestore.FieldValue.serverTimestamp(),
                     userAgent: navigator.userAgent
                 };

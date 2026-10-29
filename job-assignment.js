@@ -576,7 +576,9 @@ async function submitJobAssignment() {
         await DB.scanEvents.create({
             qrValue: finalQRValue,
             action: 'slitting',
-            childRollId: null
+            childRollId: null,
+            jobId: jobId,
+            department: DB.DEPARTMENTS.SLITTING
         });
         
         // Debug: Log what was created and verify

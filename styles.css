@@ -1382,6 +1382,32 @@ body {
     margin-top: 5px;
 }
 
+/* Select Roll: Printing vs Job choice */
+.destination-options {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.destination-btn {
+    padding: 20px;
+    font-size: 1.15rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+.destination-hint {
+    font-size: 0.8rem;
+    font-weight: 400;
+    opacity: 0.85;
+}
+
+.destination-hint:empty {
+    display: none;
+}
+
 /* Floating Home Button */
 .floating-home-button {
     position: fixed;

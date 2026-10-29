@@ -110,7 +110,8 @@ document.addEventListener('DOMContentLoaded', async function() {
             // Log scan event
             await DB.scanEvents.create({
                 qrValue: finalQRValue,
-                action: 'registration'
+                action: 'registration',
+                department: DB.DEPARTMENTS.INVENTORY
             });
 
             // Verify the master roll was saved

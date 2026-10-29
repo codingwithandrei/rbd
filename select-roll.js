@@ -118,7 +118,7 @@ async function loadAllRolls() {
                             <span class="roll-size-unit">mm</span>
                         </div>
                         ${usedJobId ? `<p class="roll-job" style="font-size: 0.85rem; color: var(--gray-600); margin-top: 8px;"><strong>Job:</strong> ${usedJobId}</p>` : ''}
-                        ${!isAvailable ? `<p class="roll-id" style="color: var(--gray-500);">Already used</p>` : ''}
+                        ${!isAvailable ? `<p class="roll-id" style="color: var(--gray-500);">${roll.printed ? 'Sent to Printing' : 'Already used'}</p>` : ''}
                     </div>
                     ${isAvailable ? `
                     <div class="roll-card-footer">
@@ -182,39 +182,84 @@ async function selectRoll(childRollId) {
         return;
     }
 
+    // Ask where the roll is going. Default sizes fit the print presses, so suggest Printing for those
+    const likelyPrinting = DB.PRINT_SIZES.includes(Number(roll.width));
+    const btnPrinting = document.getElementById('btnPrinting');
+    const btnProduction = document.getElementById('btnProduction');
+    btnPrinting.className = `btn btn-block destination-btn ${likelyPrinting ? 'btn-primary' : 'btn-secondary'}`;
+    btnProduction.className = `btn btn-block destination-btn ${likelyPrinting ? 'btn-secondary' : 'btn-primary'}`;
+    btnPrinting.disabled = false;
+    btnProduction.disabled = false;
+    document.getElementById('hintPrinting').textContent = likelyPrinting ? 'Suggested: press size' : '';
+    document.getElementById('hintProduction').textContent = likelyPrinting ? '' : 'Suggested: custom size';
+    document.getElementById('destinationRollInfo').innerHTML =
+        `Roll ${rollNumberMap[roll.id] || '?'} &middot; ${roll.width}mm &middot; Job ${jobNumber}`;
+    document.getElementById('destinationMessage').innerHTML = '';
+
+    document.getElementById('step1').style.display = 'none';
+    document.getElementById('stepDestination').style.display = 'block';
+}
+
+// Save the selected roll as used, going to Printing or Production (both are final steps)
+async function confirmDestination(department) {
+    const roll = allChildRolls.find(r => r.id === selectedRollId);
+    if (!roll) {
+        showError('Roll not found');
+        return;
+    }
+
+    // Prevent double taps while saving
+    document.getElementById('btnPrinting').disabled = true;
+    document.getElementById('btnProduction').disabled = true;
+
     try {
-        // Mark roll as used with job number
-        await DB.childRolls.markAsUsed(childRollId, jobNumber);
+        // Mark roll as used with job number and where it went
+        await DB.childRolls.markAsUsed(selectedRollId, jobNumber, department);
 
         // Log scan event
         await DB.scanEvents.create({
             qrValue: qrValue,
-            action: 'roll_selected',
-            childRollId: childRollId,
-            jobId: jobNumber
+            action: department === DB.DEPARTMENTS.PRINTING ? 'sent_to_printing' : 'roll_selected',
+            childRollId: selectedRollId,
+            jobId: jobNumber,
+            department: department
         });
 
         const rollNumber = rollNumberMap[roll.id] || '?';
+        const toPrinting = department === DB.DEPARTMENTS.PRINTING;
 
         // Show success message in step 2
         const successContainer = document.getElementById('successContainer');
         successContainer.innerHTML = `
             <div class="success-message">
-                <h3 style="margin-bottom: 12px;">Roll Marked as Used</h3>
+                <h3 style="margin-bottom: 12px;">${toPrinting ? 'Roll Sent to Printing' : 'Roll Marked as Used'}</h3>
                 <p><strong>Roll Number:</strong> ${rollNumber}</p>
                 <p><strong>Width:</strong> ${roll.width}mm</p>
                 <p><strong>Job Number:</strong> ${jobNumber}</p>
+                <p><strong>Department:</strong> ${department}</p>
                 <p><strong>Status:</strong> USED</p>
             </div>
         `;
 
-        // Hide step 1, show step 2
-        document.getElementById('step1').style.display = 'none';
+        document.getElementById('stepDestination').style.display = 'none';
         document.getElementById('step2').style.display = 'block';
     } catch (error) {
         console.error('Error marking roll as used:', error);
-        showError('Failed to mark roll as used: ' + error.message);
+        document.getElementById('destinationMessage').innerHTML = `
+            <div class="error-message" style="margin-top: 20px;">
+                <p><strong>Not saved.</strong> ${error.message}</p>
+                <p style="margin-top: 8px; font-size: 0.9rem;">If this says "permissions", sign in on this device and scan again.</p>
+            </div>
+        `;
+        document.getElementById('btnPrinting').disabled = false;
+        document.getElementById('btnProduction').disabled = false;
     }
+}
+
+function backToRollList() {
+    document.getElementById('stepDestination').style.display = 'none';
+    document.getElementById('step1').style.display = 'block';
+    selectedRollId = null;
 }
 
 function selectAnotherRoll() {
