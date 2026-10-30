@@ -1038,6 +1038,17 @@ body {
     }
 }
 
+/* Phones: rows of 3+ buttons wrap two per line instead of pushing the page wider than the screen */
+@media (max-width: 480px) {
+    .button-group {
+        flex-wrap: wrap;
+    }
+
+    .button-group .btn {
+        flex: 1 1 calc(50% - 6px);
+    }
+}
+
 /* Print-friendly Label Styles - Focus on 4x3 inch output */
 @media print {
     /* Hide everything except print view. display:none (not visibility:hidden) so the
