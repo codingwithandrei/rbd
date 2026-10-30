@@ -40,6 +40,21 @@
                         >
                     </div>
 
+                    <div class="form-group">
+                        <label for="lengthM" class="form-label">Length on the roll label (meters) *</label>
+                        <input
+                            type="number"
+                            id="lengthM"
+                            name="lengthM"
+                            class="form-input"
+                            placeholder="e.g. 6000 (type what's written on the roll)"
+                            min="1"
+                            max="20000"
+                            inputmode="numeric"
+                            required
+                        >
+                    </div>
+
                     <div id="messageContainer"></div>
 
                     <div class="button-group">
@@ -61,9 +76,9 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <script src="firebase-config.js"></script>
     <script src="auth.js"></script>
-    <script src="database.js?v=20261029"></script>
+    <script src="database.js?v=20261031"></script>
     <script src="app.js"></script>
-    <script src="master-roll.js?v=20261029"></script>
+    <script src="master-roll.js?v=20261030"></script>
 </body>
 </html>
 

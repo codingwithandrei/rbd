@@ -311,6 +311,11 @@ async function displayLotsForStock(stockNumber) {
             status: roll.status,
             registeredAt: roll.registeredAt,
             slitAt: roll.slitAt,
+            lengthTotal: roll.lengthTotal,
+            lengthRemaining: roll.lengthRemaining,
+            widthMm: roll.widthMm,
+            isOffcut: roll.isOffcut,
+            labelNo: roll.labelNo,
             isRegistered: true
         };
     });
@@ -379,10 +384,22 @@ async function displayLotsForStock(stockNumber) {
                         <div class="lot-card-header">
                             <h4>Lot Number: ${roll.lotNumber}</h4>
                             <div class="lot-status-badge ${isUnregistered ? 'unregistered' : (isSlit ? 'slit' : 'registered')}">
-                                ${isUnregistered ? 'NOT REGISTERED' : (isSlit ? 'SLIT' : 'REGISTERED')}
+                                ${isUnregistered ? 'NOT REGISTERED' : (roll.status === 'used_up' ? 'USED UP' : (isSlit ? 'SLIT' : 'REGISTERED'))}
                             </div>
                         </div>
                         <div class="lot-card-body">
+                            ${!isUnregistered && DB.isMeterTracked(roll) ? `
+                                <div class="lot-info-row">
+                                    <span class="lot-label">Meters Left:</span>
+                                    <span class="lot-value"><strong>${DB.metersLeft(roll).toLocaleString()} m</strong> of ${(roll.lengthTotal || DB.MASTER_LENGTH_M).toLocaleString()} m</span>
+                                </div>
+                            ` : ''}
+                            ${roll.isOffcut ? `
+                                <div class="lot-info-row">
+                                    <span class="lot-label">Offcut:</span>
+                                    <span class="lot-value">${roll.widthMm}mm wide · label ${roll.labelNo}</span>
+                                </div>
+                            ` : ''}
                             <div class="lot-info-row">
                                 <span class="lot-label">QR Value:</span>
                                 <span class="lot-value">${roll.qrValue}</span>
@@ -572,10 +589,20 @@ async function displayLotDetails(stockNumber, lotNumber) {
                     <span class="detail-label">Status:</span>
                     <span class="detail-value">
                         <span class="status-badge ${isUnregistered ? 'unregistered' : masterRoll.status}">
-                            ${isUnregistered ? 'NOT REGISTERED' : masterRoll.status.toUpperCase()}
+                            ${isUnregistered ? 'NOT REGISTERED' : masterRoll.status.replace('_', ' ').toUpperCase()}
                         </span>
                     </span>
                 </div>
+                ${!isUnregistered && DB.isMeterTracked(masterRoll) ? `
+                    <div class="detail-item">
+                        <span class="detail-label">Meters Left:</span>
+                        <span class="detail-value"><strong>${DB.metersLeft(masterRoll).toLocaleString()} m</strong> of ${(masterRoll.lengthTotal || DB.MASTER_LENGTH_M).toLocaleString()} m</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Width:</span>
+                        <span class="detail-value">${DB.masterWidth(masterRoll)}mm${masterRoll.isOffcut ? ` (offcut, label ${masterRoll.labelNo}, cut from ${masterRoll.parentMasterQR})` : ''}</span>
+                    </div>
+                ` : ''}
                 ${isUnregistered ? `
                     <div class="detail-item">
                         <span class="detail-label">QR Code Created:</span>
@@ -641,8 +668,8 @@ async function displayLotDetails(stockNumber, lotNumber) {
                                                 const usedJob = roll.usedJobId || (roll.status === 'USED' && roll.jobId ? roll.jobId : null);
                                                 return `
                                                     <div style="padding: 8px 12px; background: ${isAvailable ? '#d1fae5' : '#fee2e2'}; border-radius: 6px; border: 1px solid ${isAvailable ? '#10b981' : '#ef4444'};">
-                                                        <span style="font-weight: 600;">Roll ${rollNum}</span>
-                                                        <span style="margin-left: 8px; color: var(--gray-700);">${roll.width}mm</span>
+                                                        <span style="font-weight: 600;">${roll.labelNo || `Roll ${rollNum}`}</span>
+                                                        <span style="margin-left: 8px; color: var(--gray-700);">${roll.width}mm${roll.lengthM ? ` × ${roll.lengthM}m` : ''}</span>
                                                         ${isAvailable ? '<span style="margin-left: 8px; color: #065f46; font-size: 0.85rem;">AVAILABLE</span>' : `<span style="margin-left: 8px; color: #991b1b; font-size: 0.85rem;">USED${usedJob && usedJob !== job.jobNumber ? ` (Job: ${usedJob})` : ''}</span>`}
                                                     </div>
                                                 `;
@@ -685,13 +712,13 @@ async function displayLotDetails(stockNumber, lotNumber) {
                             const rollNumber = index + 1;
                             const usedJobId = roll.usedJobId || (roll.status === 'USED' && roll.jobId ? roll.jobId : null);
                             return `
-                            <div class="roll-detail-item ${roll.status === 'USED' ? 'used' : 'available'}">
+                            <div class="roll-detail-item ${roll.status === 'USED' ? 'used' : 'available'}" ${roll.labelCode ? `style="cursor: pointer;" onclick="navigateTo('roll.html?label=${encodeURIComponent(roll.labelCode)}')" title="Open roll page (reprint label)"` : ''}>
                                 <div class="roll-detail-header">
-                                    <span class="roll-detail-number">Roll ${rollNumber}</span>
-                                    <span class="roll-detail-status ${roll.status.toLowerCase()}">${roll.status}</span>
+                                    <span class="roll-detail-number">${roll.labelNo ? `${roll.labelNo} (run ${roll.runNumber})` : `Roll ${rollNumber}`}</span>
+                                    <span class="roll-detail-status ${roll.status.toLowerCase()}">${roll.status === 'USED' ? (roll.printed ? 'PRINTING' : 'USED') : roll.status}</span>
                                 </div>
                                 <div class="roll-detail-body">
-                                    <span class="roll-detail-width">${roll.width}mm</span>
+                                    <span class="roll-detail-width">${roll.width}mm${roll.lengthM ? ` × ${roll.lengthM}m` : ''}</span>
                                     ${roll.jobId ? `<span style="margin-left: 12px; color: var(--gray-600); font-size: 0.9rem;">Slit Job: ${roll.jobId}</span>` : ''}
                                     ${usedJobId && usedJobId !== roll.jobId ? `<span style="margin-left: 12px; color: var(--error-red); font-size: 0.9rem; font-weight: 500;">Used Job: ${usedJobId}</span>` : ''}
                                     ${roll.usedAt ? `

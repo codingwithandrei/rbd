@@ -46,8 +46,15 @@ document.addEventListener('DOMContentLoaded', async function() {
         const stockNumber = document.getElementById('stockNumber').value.trim();
         const lotNumber = document.getElementById('lotNumber').value.trim();
 
+        // Masters vary around 6000m; record what the roll's own label says
+        const lengthM = parseInt(document.getElementById('lengthM').value, 10);
+
         if (!stockNumber || !lotNumber) {
             showMessage('Please fill in all fields', 'error');
+            return;
+        }
+        if (!lengthM || lengthM < 1 || lengthM > 20000) {
+            showMessage('Enter the length written on the master roll (meters).', 'error');
             return;
         }
 
@@ -94,7 +101,8 @@ document.addEventListener('DOMContentLoaded', async function() {
             const newMasterRoll = await DB.masterRolls.create({
                 qrValue: finalQRValue,
                 stockNumber: stockNumber,
-                lotNumber: lotNumber
+                lotNumber: lotNumber,
+                lengthM: lengthM
             });
 
             // Ensure QR code record exists (should already exist from generation, but double-check)
@@ -123,7 +131,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             }
 
             console.log('✓ Master roll saved and verified:', verifyRoll);
-            showMessage('Master roll marked as received successfully! Status: Received (ready for slitting)', 'success');
+            showMessage(`Master roll marked as received successfully! ${lengthM.toLocaleString()} m, ready for slitting.`, 'success');
             
             // Clear form
             form.reset();

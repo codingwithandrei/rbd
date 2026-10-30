@@ -120,12 +120,19 @@
     <script src="firebase-config.js"></script>
     <script src="auth.js"></script>
     <script>
+        // Go back to the page that asked for sign-in (e.g. a scanned roll), else home
+        function pageAfterLogin() {
+            const saved = sessionStorage.getItem('redirectAfterLogin');
+            sessionStorage.removeItem('redirectAfterLogin');
+            return saved && saved.startsWith('/') && !saved.startsWith('//') && !saved.startsWith('/\\') && !saved.includes('login.html') ? saved : 'index.html';
+        }
+
         document.addEventListener('DOMContentLoaded', async function() {
             // Check if user is already logged in
             const currentUser = await Auth.getCurrentUser();
             if (currentUser) {
-                // User is already logged in, redirect to home
-                window.location.href = 'index.html';
+                // User is already logged in, go back or home
+                window.location.href = pageAfterLogin();
                 return;
             }
 
@@ -156,8 +163,8 @@
                         throw new Error('User account not properly configured. Please contact administrator.');
                     }
 
-                    // Success - redirect to home
-                    window.location.href = 'index.html';
+                    // Success - back to the page that asked for sign-in, else home
+                    window.location.href = pageAfterLogin();
                 } catch (error) {
                     console.error('Login error:', error);
                     errorMessage.textContent = error.message || 'Failed to sign in. Please check your credentials.';

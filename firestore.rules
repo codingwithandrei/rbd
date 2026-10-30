@@ -76,6 +76,28 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
     
+    // Roll Labels collection - blank QR labels linked to child rolls at the slitter
+    // Anyone can open one label by its (unguessable) code; only signed-in users can list them
+    match /rollLabels/{labelCode} {
+      allow get: if true;
+      allow list: if isAuthenticated();
+      allow create, update: if isAuthenticated() && (isAdmin() || hasRole('operator'));
+      allow delete: if isAdmin();
+    }
+
+    // Slitting Runs collection - one record per run (job, lanes, widths, length cut)
+    match /slitRuns/{runId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && (isAdmin() || hasRole('operator'));
+      allow delete: if isAdmin();
+    }
+
+    // Counters (next roll label number)
+    match /counters/{counterId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (isAdmin() || hasRole('operator'));
+    }
+
     // Deleted Stock Numbers collection
     // Only authenticated users can access
     match /deletedStockNumbers/{deletedId} {

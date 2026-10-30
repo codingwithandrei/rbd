@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Roll - RBD App</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+    <!-- Floating Home Button -->
+    <button class="floating-home-button" onclick="navigateTo('index.html')" title="Return to Home">
+        🏠 Home
+    </button>
+
+    <div class="container">
+        <header class="header">
+            <h1 class="logo" id="rollTitle">Roll</h1>
+            <p class="subtitle" id="rollSubtitle">Loading…</p>
+        </header>
+
+        <main class="main-content">
+            <div class="form-container">
+                <div id="rollMessage"></div>
+                <div id="rollInfo"></div>
+
+                <!-- Signed-in workers: where the roll goes next -->
+                <div id="rollActions" style="display: none;">
+                    <h3 class="form-title" style="font-size: 1.3rem; margin-bottom: 16px;">Where is this roll going?</h3>
+                    <div class="form-group">
+                        <label for="useJobNumber" class="form-label">Job Number *</label>
+                        <input type="text" id="useJobNumber" class="form-input" placeholder="Enter job number">
+                    </div>
+                    <div class="destination-options">
+                        <button type="button" id="btnPrinting" class="btn btn-block destination-btn" onclick="confirmDestination(DB.DEPARTMENTS.PRINTING)">
+                            🖨️ Send to Printing
+                            <span class="destination-hint" id="hintPrinting"></span>
+                        </button>
+                        <button type="button" id="btnProduction" class="btn btn-block destination-btn" onclick="confirmDestination(DB.DEPARTMENTS.PRODUCTION)">
+                            ✅ Use for Job (no printing)
+                            <span class="destination-hint" id="hintProduction"></span>
+                        </button>
+                    </div>
+                    <div id="actionMessage"></div>
+                </div>
+
+                <div class="button-group" style="margin-top: 30px;" id="rollButtons"></div>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <img src="rbd-logo.png.png" alt="RBD Logo" style="max-width: 80px; height: auto; margin-bottom: 8px; display: block; margin-left: auto; margin-right: auto;">
+            <p>&copy; 2025 RBD Packaging</p>
+        </footer>
+    </div>
+
+    <!-- Print View (hidden, used for reprinting the label) -->
+    <div id="printView" style="display: none;"></div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="firebase-config.js"></script>
+    <script src="auth.js"></script>
+    <script src="database.js?v=20261031"></script>
+    <script src="app.js"></script>
+    <script src="roll-labels-print.js?v=20261030"></script>
+    <script src="roll.js?v=20261030"></script>
+</body>
+</html>

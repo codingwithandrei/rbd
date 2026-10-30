@@ -15,6 +15,58 @@ const DB = {
     // Default slit widths (mm) - these fit the print presses
     PRINT_SIZES: [225, 241, 325],
 
+    // Master rolls are 1300mm wide and about 6000m long (the receiver enters the real length)
+    MASTER_WIDTH_MM: 1300,
+    MASTER_LENGTH_M: 6000,
+
+    // Offcut left over from a run (master width minus the lanes): narrower than this is scrapped,
+    // this wide or wider goes back to inventory as its own master roll (same lot, new stock number)
+    OFFCUT_MIN_MM: 158,
+
+    // Offcut stock numbers: 0410 + width in mm + a 3-digit count per width, e.g. the first 200mm offcut is 0410200001.
+    // The count lives in counters/offcut-<width> so it can later be set to match the main system's count.
+    OFFCUT_STOCK_PREFIX: '0410',
+
+    offcutStockNumber(widthMm, count) {
+        return `${DB.OFFCUT_STOCK_PREFIX}${widthMm}${String(count).padStart(3, '0')}`;
+    },
+
+    _offcutCounterRef(widthMm) {
+        return DB._getDB().collection('counters').doc(`offcut-${widthMm}`);
+    },
+
+    // Stock number the next offcut of this width will get (the real one is assigned when the run is saved)
+    async nextOffcutStockNumber(widthMm) {
+        const counter = await DB._offcutCounterRef(widthMm).get();
+        return DB.offcutStockNumber(widthMm, counter.exists ? counter.data().next : 1);
+    },
+
+    // Width of a master roll (offcut masters are narrower than 1300mm)
+    masterWidth(masterRoll) {
+        return (masterRoll && masterRoll.widthMm) || DB.MASTER_WIDTH_MM;
+    },
+
+    // Child roll labels: printed blank, linked to a roll at the slitter
+    LABEL_STATUS: {
+        BLANK: 'BLANK',
+        LINKED: 'LINKED'
+    },
+
+    // Base URL encoded in printed QR codes (always the live site, even when printed locally)
+    PRODUCTION_URL: 'https://rbd-weld.vercel.app',
+
+    // Masters received before meter tracking have no lengthTotal and use the old one-time slit flow
+    isMeterTracked(masterRoll) {
+        return !!masterRoll && (masterRoll.lengthTotal !== undefined || masterRoll.status === 'registered');
+    },
+
+    // Meters left on a master (masters received before meter tracking but not slit count as full)
+    metersLeft(masterRoll) {
+        if (!masterRoll) return 0;
+        if (masterRoll.lengthRemaining !== undefined) return masterRoll.lengthRemaining;
+        return masterRoll.status === 'registered' ? DB.MASTER_LENGTH_M : 0;
+    },
+
     // Get Firestore instance
     _getDB() {
         const db = getFirestore();
@@ -149,6 +201,9 @@ const DB = {
                     lotNumber: data.lotNumber,
                     status: 'registered',
                     currentDepartment: DB.DEPARTMENTS.INVENTORY,
+                    widthMm: DB.MASTER_WIDTH_MM,
+                    lengthTotal: data.lengthM || DB.MASTER_LENGTH_M,
+                    lengthRemaining: data.lengthM || DB.MASTER_LENGTH_M,
                     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                     registeredAt: firebase.firestore.FieldValue.serverTimestamp()
                 };
@@ -327,6 +382,289 @@ const DB = {
                 console.error('Error marking child roll as used:', error);
                 throw new Error('Failed to mark roll as used: ' + error.message);
             }
+        },
+
+        // Get a child roll by ID (new rolls use their label code as the ID)
+        async getById(childRollId) {
+            const db = DB._getDB();
+            const doc = await db.collection('childRolls').doc(childRollId).get();
+            return doc.exists ? DB._docToObject(doc) : null;
+        }
+    },
+
+    // Roll Label Operations - blank QR labels printed ahead of time, linked to a child roll at the slitter
+    rollLabels: {
+        // No 0/O/1/I so codes are easy to read and type
+        _CODE_CHARS: 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789',
+
+        // "B-0001" style number printed big on the label
+        shortNo(number) {
+            return 'B-' + String(number).padStart(4, '0');
+        },
+
+        // Full code in the QR: short number plus a random part so codes can't be guessed
+        _newCode(number) {
+            const chars = this._CODE_CHARS;
+            const random = new Uint32Array(6);
+            crypto.getRandomValues(random);
+            const suffix = Array.from(random, n => chars[n % chars.length]).join('');
+            return `${this.shortNo(number)}-${suffix}`;
+        },
+
+        // URL encoded in the label's QR (opens the roll page when scanned with a phone camera).
+        // Kept short (no index.html) so the QR has fewer, bigger squares and scans more easily.
+        url(code) {
+            return `${DB.PRODUCTION_URL}/?label=${encodeURIComponent(code)}`;
+        },
+
+        // Read what a scanner returned: a label URL, a full code, or a typed number like "B-0001" / "12"
+        parse(text) {
+            const value = String(text || '').trim();
+            if (!value) return null;
+            try {
+                const label = new URL(value).searchParams.get('label');
+                if (label) return { code: label.toUpperCase() };
+                return { otherUrl: value };
+            } catch (e) {
+                // Not a URL
+            }
+            const upper = value.toUpperCase();
+            if (/^B-\d{4,}-[A-Z0-9]{6}$/.test(upper)) return { code: upper };
+            const digits = upper.match(/^(?:B-?)?0*(\d+)$/);
+            if (digits) return { shortNo: this.shortNo(parseInt(digits[1], 10)) };
+            return null;
+        },
+
+        // Get a label by its full code
+        async get(code) {
+            const db = DB._getDB();
+            const doc = await db.collection('rollLabels').doc(code).get();
+            return doc.exists ? DB._docToObject(doc) : null;
+        },
+
+        // Get a label by its printed number (for typing it in when the camera can't read it)
+        async getByShortNo(shortNo) {
+            const db = DB._getDB();
+            const snapshot = await db.collection('rollLabels').where('shortNo', '==', shortNo).limit(1).get();
+            return snapshot.empty ? null : DB._docToObject(snapshot.docs[0]);
+        },
+
+        // All labels not yet linked to a roll, lowest number first (for printing them again)
+        async getBlank() {
+            const db = DB._getDB();
+            const snapshot = await db.collection('rollLabels').where('status', '==', DB.LABEL_STATUS.BLANK).get();
+            return snapshot.docs.map(doc => DB._docToObject(doc)).sort((a, b) => a.number - b.number);
+        },
+
+        // Resolve scanner text to a label record (null if it isn't one of our labels)
+        async resolve(text) {
+            const parsed = this.parse(text);
+            if (!parsed || parsed.otherUrl) return null;
+            return parsed.code ? this.get(parsed.code) : this.getByShortNo(parsed.shortNo);
+        },
+
+        // Reserve the next numbers and save that many blank labels
+        async createBlankBatch(count) {
+            const db = DB._getDB();
+            const counterRef = db.collection('counters').doc('rollLabels');
+            const firstNumber = await db.runTransaction(async (tx) => {
+                const counter = await tx.get(counterRef);
+                const next = counter.exists ? counter.data().next : 1;
+                tx.set(counterRef, { next: next + count }, { merge: true });
+                return next;
+            });
+
+            const printBatchId = `labels-${Date.now()}`;
+            const batch = db.batch();
+            const labels = [];
+            for (let i = 0; i < count; i++) {
+                const number = firstNumber + i;
+                const code = this._newCode(number);
+                const label = {
+                    code: code,
+                    shortNo: this.shortNo(number),
+                    number: number,
+                    status: DB.LABEL_STATUS.BLANK,
+                    childRollId: null,
+                    printBatchId: printBatchId,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                };
+                batch.set(db.collection('rollLabels').doc(code), label);
+                labels.push({ id: code, ...label });
+            }
+            await batch.commit();
+            return labels;
+        }
+    },
+
+    // Slitting Run Operations - one run cuts one length off a master into one or more lanes
+    slitRuns: {
+        // All runs for a master roll, oldest first
+        async getByMaster(masterRollQR) {
+            const db = DB._getDB();
+            const snapshot = await db.collection('slitRuns').where('masterRollQR', '==', masterRollQR).get();
+            return snapshot.docs.map(doc => DB._docToObject(doc))
+                .sort((a, b) => (a.runNumber || 0) - (b.runNumber || 0));
+        },
+
+        // Save a run in one transaction: child rolls, linked labels, the offcut, the run, and the master's meters left.
+        // Either everything saves or nothing does.
+        // offcut: { keep, labelCode } - keep=true puts it back in inventory as its own master roll with the next offcut stock number
+        async finish({ masterRollQR, jobId, widths, lengthM, labelCodes, offcut, userEmail }) {
+            const db = DB._getDB();
+            const keepOffcut = !!(offcut && offcut.keep);
+            if (widths.length !== labelCodes.length) {
+                throw new Error('Every roll needs a label');
+            }
+            if (keepOffcut && !offcut.labelCode) {
+                throw new Error('The offcut needs a label');
+            }
+            const allCodes = keepOffcut ? [...labelCodes, offcut.labelCode] : labelCodes;
+            if (new Set(allCodes).size !== allCodes.length) {
+                throw new Error('The same label was scanned twice');
+            }
+
+            const snapshot = await db.collection('masterRolls').where('qrValue', '==', masterRollQR).limit(1).get();
+            if (snapshot.empty) {
+                throw new Error('Master roll not found');
+            }
+            const masterRef = snapshot.docs[0].ref;
+            const runRef = db.collection('slitRuns').doc();
+            const labelRefs = allCodes.map(code => db.collection('rollLabels').doc(code));
+            const offcutMasterRef = keepOffcut ? db.collection('masterRolls').doc() : null;
+
+            return db.runTransaction(async (tx) => {
+                // Firestore needs all reads before any writes
+                const masterDoc = await tx.get(masterRef);
+                const labelDocs = await Promise.all(labelRefs.map(ref => tx.get(ref)));
+
+                const master = masterDoc.data();
+                if (!DB.isMeterTracked(master)) {
+                    throw new Error('This master roll was slit the old way and has no meters to track');
+                }
+                const left = DB.metersLeft(master);
+                if (lengthM > left) {
+                    throw new Error(`Only ${left} m left on this master roll`);
+                }
+                const masterWidth = DB.masterWidth(master);
+                const offcutWidth = masterWidth - widths.reduce((sum, w) => sum + w, 0);
+                if (offcutWidth < 0) {
+                    throw new Error(`Rolls add up to more than the ${masterWidth}mm master width`);
+                }
+                if (keepOffcut && offcutWidth < DB.OFFCUT_MIN_MM) {
+                    throw new Error(`Offcuts under ${DB.OFFCUT_MIN_MM}mm are scrapped, not kept`);
+                }
+                labelDocs.forEach((doc, i) => {
+                    if (!doc.exists) {
+                        throw new Error(`${allCodes[i]} is not one of our labels`);
+                    }
+                    if (doc.data().status !== DB.LABEL_STATUS.BLANK) {
+                        throw new Error(`${doc.data().shortNo} is already on another roll`);
+                    }
+                });
+
+                // Take the next offcut count for this width (read inside the transaction so two runs can't share a number)
+                let offcutStock = null;
+                const offcutCounterRef = keepOffcut ? DB._offcutCounterRef(offcutWidth) : null;
+                let offcutCount = 1;
+                if (keepOffcut) {
+                    const counter = await tx.get(offcutCounterRef);
+                    offcutCount = counter.exists ? counter.data().next : 1;
+                    offcutStock = DB.offcutStockNumber(offcutWidth, offcutCount);
+                }
+
+                const now = firebase.firestore.FieldValue.serverTimestamp();
+                const remaining = left - lengthM;
+                const runNumber = (master.runCount || 0) + 1;
+
+                labelCodes.forEach((code, i) => {
+                    const doc = labelDocs[i];
+                    tx.set(db.collection('childRolls').doc(code), {
+                        masterRollQR: masterRollQR,
+                        lotNumber: master.lotNumber,
+                        stockNumber: master.stockNumber,
+                        width: widths[i],
+                        lengthM: lengthM,
+                        lane: i + 1,
+                        runId: runRef.id,
+                        runNumber: runNumber,
+                        labelCode: code,
+                        labelNo: doc.data().shortNo,
+                        status: 'AVAILABLE',
+                        currentDepartment: DB.DEPARTMENTS.SLITTING,
+                        jobId: jobId,
+                        createdAt: now
+                    });
+                    tx.update(labelRefs[i], {
+                        status: DB.LABEL_STATUS.LINKED,
+                        childRollId: code,
+                        masterRollQR: masterRollQR,
+                        linkedAt: now
+                    });
+                });
+
+                // Offcut kept: it becomes its own master roll, scanned by its roll label (the label code is its QR value)
+                const offcutAction = offcutWidth === 0 ? 'none' : (keepOffcut ? 'kept' : 'scrapped');
+                if (keepOffcut) {
+                    const offcutLabelIndex = labelCodes.length;
+                    tx.set(offcutMasterRef, {
+                        qrValue: offcut.labelCode,
+                        labelNo: labelDocs[offcutLabelIndex].data().shortNo,
+                        lotNumber: master.lotNumber,
+                        stockNumber: offcutStock,
+                        status: 'registered',
+                        isOffcut: true,
+                        parentMasterQR: masterRollQR,
+                        fromRunId: runRef.id,
+                        currentDepartment: DB.DEPARTMENTS.INVENTORY,
+                        widthMm: offcutWidth,
+                        lengthTotal: lengthM,
+                        lengthRemaining: lengthM,
+                        createdAt: now,
+                        registeredAt: now
+                    });
+                    tx.update(labelRefs[offcutLabelIndex], {
+                        status: DB.LABEL_STATUS.LINKED,
+                        offcutMasterQR: offcut.labelCode,
+                        masterRollQR: masterRollQR,
+                        linkedAt: now
+                    });
+                    tx.set(offcutCounterRef, { next: offcutCount + 1 }, { merge: true });
+                }
+
+                tx.set(runRef, {
+                    masterRollQR: masterRollQR,
+                    runNumber: runNumber,
+                    jobId: jobId,
+                    lanes: widths.length,
+                    widths: widths,
+                    lengthM: lengthM,
+                    labelCodes: labelCodes,
+                    offcutWidthMm: offcutWidth,
+                    offcutAction: offcutAction,
+                    offcutLabelCode: keepOffcut ? offcut.labelCode : null,
+                    offcutStockNumber: offcutStock,
+                    lengthBefore: left,
+                    lengthAfter: remaining,
+                    createdBy: userEmail || null,
+                    createdAt: now
+                });
+
+                const masterUpdate = {
+                    lengthTotal: master.lengthTotal || DB.MASTER_LENGTH_M,
+                    lengthRemaining: remaining,
+                    runCount: runNumber,
+                    status: remaining === 0 ? 'used_up' : 'slit',
+                    currentDepartment: DB.DEPARTMENTS.SLITTING,
+                    lastRunAt: now
+                };
+                if (!master.slitAt) {
+                    masterUpdate.slitAt = now;
+                }
+                tx.update(masterRef, masterUpdate);
+
+                return { runId: runRef.id, runNumber: runNumber, remaining: remaining, offcutWidth: offcutWidth, offcutAction: offcutAction, offcutStockNumber: offcutStock };
+            });
         }
     },
 
@@ -483,6 +821,12 @@ const DB = {
                 return 'not_found';
             }
 
+            // Meter-tracked masters always open the slitting screen (it shows meters left or "used up")
+            if (DB.isMeterTracked(masterRoll)) {
+                return 'stage2';
+            }
+
+            // Old flow below: masters slit once before meter tracking
             if (masterRoll.status === 'registered') {
                 const childRolls = await DB.childRolls.getByMasterQR(qrValue);
                 if (childRolls.length === 0) {

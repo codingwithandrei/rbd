@@ -1382,6 +1382,185 @@ body {
     margin-top: 5px;
 }
 
+/* Child roll labels: big label number under the logo/QR row */
+.roll-label .label-roll-no {
+    font-size: 0.26in;
+    font-weight: 800;
+    color: #000;
+    line-height: 1.15;
+    letter-spacing: 0.01in;
+}
+
+.roll-label .label-roll-no-blank {
+    font-size: 0.55in;
+    letter-spacing: 0.03in;
+}
+
+.roll-label .label-line {
+    font-size: 0.17in;
+    font-weight: 600;
+    color: #000;
+    line-height: 1.25;
+    margin-top: 0.03in;
+}
+
+.roll-label .label-info {
+    align-items: center;
+    text-align: center;
+}
+
+@media print {
+    .roll-label .label-info {
+        padding-left: 0 !important;
+    }
+}
+
+@media screen and (max-width: 480px) {
+    .label-preview .roll-label .label-roll-no { font-size: 5vw; }
+    .label-preview .roll-label .label-roll-no-blank { font-size: 10vw; }
+    .label-preview .roll-label .label-line { font-size: 3.4vw; }
+}
+
+/* In-app QR scanner */
+.scanner-box {
+    position: relative;
+    width: 100%;
+    max-width: 420px;
+    margin: 0 auto 16px;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #000;
+}
+
+.scanner-box video {
+    display: block;
+    width: 100% !important;
+    height: auto !important;
+}
+
+.scanner-status {
+    text-align: center;
+    font-weight: 600;
+    margin: 8px 0 16px;
+    min-height: 1.4em;
+}
+
+.scanner-status.ok { color: var(--success-green); }
+.scanner-status.bad { color: var(--error-red); }
+
+.manual-code-row {
+    display: flex;
+    gap: 8px;
+    max-width: 420px;
+    margin: 0 auto 20px;
+}
+
+.manual-code-row .form-input { flex: 1; }
+
+/* Slitting: label slots and run summary */
+.label-slots {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.label-slot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border: 2px dashed var(--gray-200);
+    border-radius: 8px;
+    color: var(--gray-600);
+}
+
+.label-slot.current {
+    border-color: var(--primary-blue);
+    color: var(--primary-blue);
+    font-weight: 600;
+}
+
+.label-slot.filled {
+    border-style: solid;
+    border-color: var(--success-green);
+    background: #ecfdf5;
+    color: var(--gray-800);
+}
+
+.label-slot .slot-remove {
+    background: none;
+    border: none;
+    color: var(--gray-600);
+    font-size: 1.1rem;
+    cursor: pointer;
+}
+
+.meters-left {
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--primary-blue);
+}
+
+.meters-bar {
+    height: 10px;
+    background: var(--gray-200);
+    border-radius: 5px;
+    overflow: hidden;
+    margin: 8px 0 4px;
+}
+
+.meters-bar > div {
+    height: 100%;
+    background: var(--primary-blue);
+}
+
+.length-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.run-history {
+    margin-top: 16px;
+    font-size: 0.9rem;
+}
+
+.run-history-item {
+    padding: 8px 0;
+    border-top: 1px solid var(--gray-200);
+}
+
+/* Roll info page */
+.roll-info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.roll-info-item {
+    background: var(--gray-50);
+    border-radius: 8px;
+    padding: 12px;
+}
+
+.roll-info-item .k {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--gray-600);
+}
+
+.roll-info-item .v {
+    display: block;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--gray-800);
+    word-break: break-word;
+}
+
 /* Select Roll: Printing vs Job choice */
 .destination-options {
     display: flex;

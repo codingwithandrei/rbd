@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Roll Labels - RBD App</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+    <!-- Floating Home Button -->
+    <button class="floating-home-button" onclick="navigateTo('index.html')" title="Return to Home">
+        🏠 Home
+    </button>
+
+    <div class="container">
+        <header class="header">
+            <h1 class="logo">Roll Labels</h1>
+            <p class="subtitle">Print blank labels for child rolls. They get linked to a roll at the slitter.</p>
+        </header>
+
+        <main class="main-content">
+            <div class="form-container">
+                <div id="stepCount" class="step">
+                    <div class="form-group">
+                        <label for="labelCount" class="form-label">How many blank labels?</label>
+                        <input type="number" id="labelCount" class="form-input" min="1" max="100" value="30" inputmode="numeric">
+                        <p style="color: var(--gray-600); font-size: 0.9rem; margin-top: 8px;">
+                            Unused labels are fine: keep them for the next master roll. Numbers never repeat.
+                        </p>
+                    </div>
+                    <div id="countMessage"></div>
+                    <div class="button-group">
+                        <button type="button" class="btn btn-secondary" onclick="navigateTo('index.html')">Back</button>
+                        <button type="button" id="createLabelsBtn" class="btn btn-primary" onclick="createLabels()">Create Labels</button>
+                    </div>
+
+                    <!-- Print again: labels created earlier that aren't on a roll yet -->
+                    <div style="margin-top: 36px; padding-top: 24px; border-top: 2px solid var(--gray-200);">
+                        <h3 class="form-title" style="font-size: 1.3rem; margin-bottom: 4px;">Unused labels</h3>
+                        <p class="form-subtitle" style="margin-bottom: 16px;">Print them again any time. Labels already on a roll are reprinted from the roll's page.</p>
+                        <div id="unusedLabels"><p style="color: var(--gray-600);">Loading…</p></div>
+                        <div class="manual-code-row" style="margin: 16px 0 0; max-width: none;">
+                            <input type="text" id="singleLabel" class="form-input" placeholder="Print one label by number (e.g. B-0003)" onkeydown="if (event.key === 'Enter') printSingleLabel()">
+                            <button type="button" class="btn btn-secondary" onclick="printSingleLabel()">Print</button>
+                        </div>
+                        <div id="singleLabelMessage"></div>
+                    </div>
+                </div>
+
+                <div id="stepPreview" class="step" style="display: none;">
+                    <h3 class="form-title" style="font-size: 1.5rem; margin-bottom: 8px;">Labels Ready</h3>
+                    <p id="previewSummary" class="form-subtitle" style="margin-bottom: 24px;"></p>
+                    <div class="button-group" style="margin-bottom: 24px;">
+                        <button type="button" class="btn btn-yellow" onclick="printCreatedLabels()">Print Labels</button>
+                        <button type="button" class="btn btn-secondary" onclick="startOver()">Create More</button>
+                    </div>
+                    <div id="labelsPreview" class="label-preview"></div>
+                </div>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <img src="rbd-logo.png.png" alt="RBD Logo" style="max-width: 80px; height: auto; margin-bottom: 8px; display: block; margin-left: auto; margin-right: auto;">
+            <p>&copy; 2025 RBD Packaging</p>
+        </footer>
+    </div>
+
+    <!-- Print View (hidden, used for printing labels) -->
+    <div id="printView" style="display: none;"></div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="firebase-config.js"></script>
+    <script src="auth.js"></script>
+    <script src="database.js?v=20261031"></script>
+    <script src="app.js"></script>
+    <script src="roll-labels-print.js?v=20261030"></script>
+    <script>
+        let createdLabels = [];
+        let unusedBatches = [];
+
+        document.addEventListener('DOMContentLoaded', async function() {
+            const authenticated = await Auth.requireAuth();
+            if (!authenticated) return;
+            try {
+                await DB.init();
+            } catch (error) {
+                console.error('Failed to initialize database:', error);
+            }
+            loadUnusedLabels();
+        });
+
+        // Unused labels grouped by the batch they were created in
+        async function loadUnusedLabels() {
+            const container = document.getElementById('unusedLabels');
+            let labels;
+            try {
+                labels = await DB.rollLabels.getBlank();
+            } catch (error) {
+                console.error('Error loading unused labels:', error);
+                container.innerHTML = `<div class="error-message">Could not load unused labels. ${error.message}</div>`;
+                return;
+            }
+            if (labels.length === 0) {
+                container.innerHTML = '<p style="color: var(--gray-600);">No unused labels. Create some above.</p>';
+                return;
+            }
+
+            const byBatch = {};
+            labels.forEach(label => {
+                const key = label.printBatchId || 'older';
+                (byBatch[key] = byBatch[key] || []).push(label);
+            });
+            // Newest batch first
+            unusedBatches = Object.values(byBatch).sort((a, b) => b[0].number - a[0].number);
+
+            container.innerHTML = `
+                <div class="run-history" style="margin-top: 0;">
+                    ${unusedBatches.map((batch, i) => `
+                        <div class="run-history-item" style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+                            <span>
+                                <strong>${batch[0].shortNo}${batch.length > 1 ? ' – ' + batch[batch.length - 1].shortNo : ''}</strong>
+                                · ${batch.length} unused
+                                <span style="color: var(--gray-600);">${batch[0].createdAt ? '· made ' + new Date(batch[0].createdAt).toLocaleDateString() : ''}</span>
+                            </span>
+                            <button type="button" class="btn btn-yellow btn-small" onclick="printBatch(${i})">Print</button>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function printBatch(index) {
+            RollLabelPrint.print(unusedBatches[index].map(label => ({ label: label, roll: null })));
+        }
+
+        async function printSingleLabel() {
+            const input = document.getElementById('singleLabel');
+            const message = document.getElementById('singleLabelMessage');
+            message.innerHTML = '';
+            const value = input.value.trim();
+            if (!value) return;
+
+            let label = null;
+            try {
+                label = await DB.rollLabels.resolve(value);
+            } catch (error) {
+                message.innerHTML = `<div class="error-message" style="margin-top: 12px;">${error.message}</div>`;
+                return;
+            }
+            if (!label) {
+                message.innerHTML = `<div class="error-message" style="margin-top: 12px;">${value} is not one of our roll labels.</div>`;
+                return;
+            }
+            if (label.status !== DB.LABEL_STATUS.BLANK) {
+                message.innerHTML = `<div class="info-message" style="margin-top: 12px;">${label.shortNo} is already on a roll. <a href="roll.html?label=${encodeURIComponent(label.id)}">Open its page</a> to reprint it with the roll details.</div>`;
+                return;
+            }
+            input.value = '';
+            RollLabelPrint.print([{ label: label, roll: null }]);
+        }
+
+        async function createLabels() {
+            const count = parseInt(document.getElementById('labelCount').value, 10);
+            const message = document.getElementById('countMessage');
+            message.innerHTML = '';
+            if (!count || count < 1 || count > 100) {
+                message.innerHTML = '<div class="error-message">Enter a number from 1 to 100.</div>';
+                return;
+            }
+
+            const button = document.getElementById('createLabelsBtn');
+            button.disabled = true;
+            button.textContent = 'Creating...';
+            try {
+                createdLabels = await DB.rollLabels.createBlankBatch(count);
+            } catch (error) {
+                console.error('Error creating labels:', error);
+                message.innerHTML = `<div class="error-message"><strong>Not saved.</strong> ${error.message}</div>`;
+                return;
+            } finally {
+                button.disabled = false;
+                button.textContent = 'Create Labels';
+            }
+
+            const first = createdLabels[0].shortNo;
+            const last = createdLabels[createdLabels.length - 1].shortNo;
+            document.getElementById('previewSummary').textContent =
+                `${createdLabels.length} labels: ${first}${createdLabels.length > 1 ? ' to ' + last : ''}`;
+            const preview = document.getElementById('labelsPreview');
+            preview.innerHTML = '';
+            createdLabels.forEach((label, index) => {
+                RollLabelPrint.append(preview, label, null, `preview-roll-qr-${index}`);
+            });
+            document.getElementById('stepCount').style.display = 'none';
+            document.getElementById('stepPreview').style.display = 'block';
+        }
+
+        function printCreatedLabels() {
+            RollLabelPrint.print(createdLabels.map(label => ({ label: label, roll: null })));
+        }
+
+        function startOver() {
+            createdLabels = [];
+            document.getElementById('labelsPreview').innerHTML = '';
+            document.getElementById('stepPreview').style.display = 'none';
+            document.getElementById('stepCount').style.display = 'block';
+            loadUnusedLabels();
+        }
+    </script>
+</body>
+</html>
