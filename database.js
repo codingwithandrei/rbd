@@ -23,12 +23,12 @@ const DB = {
     // this wide or wider goes back to inventory as its own master roll (same lot, new stock number)
     OFFCUT_MIN_MM: 158,
 
-    // Offcut stock numbers: 0410 + width in mm + a 3-digit count per width, e.g. the first 200mm offcut is 0410200001.
+    // Offcut stock numbers: 0410 + width in mm + a 2-digit count per width, e.g. the first 200mm offcut is 041020001.
     // The count lives in counters/offcut-<width> so it can later be set to match the main system's count.
     OFFCUT_STOCK_PREFIX: '0410',
 
     offcutStockNumber(widthMm, count) {
-        return `${DB.OFFCUT_STOCK_PREFIX}${widthMm}${String(count).padStart(3, '0')}`;
+        return `${DB.OFFCUT_STOCK_PREFIX}${widthMm}${String(count).padStart(2, '0')}`;
     },
 
     _offcutCounterRef(widthMm) {
@@ -39,6 +39,33 @@ const DB = {
     async nextOffcutStockNumber(widthMm) {
         const counter = await DB._offcutCounterRef(widthMm).get();
         return DB.offcutStockNumber(widthMm, counter.exists ? counter.data().next : 1);
+    },
+
+    // On for local testing only until the real email has been tested. While off, kept offcuts go straight to inventory.
+    OFFCUT_REVIEW_ENABLED: window.location.hostname === 'localhost',
+
+    // EmailJS sends the review email. These IDs are public by design; the reviewer's address is set in the
+    // EmailJS template, so this page can't send to anyone else.
+    EMAILJS: {
+        serviceId: 'service_0kydkrl',
+        templateId: 'template_77a2vci',
+        publicKey: 'G6O-fi4Y5oNsqP4p4'
+    },
+
+    // Kept offcuts wait for the reviewer's Save / Discard answer before they can be slit.
+    // Offcuts with no reviewStatus count as approved.
+    OFFCUT_REVIEW: {
+        PENDING: 'pending',
+        APPROVED: 'approved',
+        DISCARDED: 'discarded'
+    },
+
+    isWaitingForReview(masterRoll) {
+        return !!masterRoll && masterRoll.reviewStatus === DB.OFFCUT_REVIEW.PENDING;
+    },
+
+    isDiscarded(masterRoll) {
+        return !!masterRoll && masterRoll.reviewStatus === DB.OFFCUT_REVIEW.DISCARDED;
     },
 
     // Width of a master roll (offcut masters are narrower than 1300mm)
@@ -384,6 +411,30 @@ const DB = {
             }
         },
 
+        // Printing records its own job number when it gets a roll. Allowed once per roll.
+        async setPrintingJob(childRollId, jobId, userEmail) {
+            const db = DB._getDB();
+            const docRef = db.collection('childRolls').doc(childRollId);
+            await db.runTransaction(async (tx) => {
+                const doc = await tx.get(docRef);
+                if (!doc.exists) {
+                    throw new Error('Roll not found');
+                }
+                const roll = doc.data();
+                if (!roll.printed) {
+                    throw new Error('This roll has not been sent to Printing');
+                }
+                if (roll.printingJobId) {
+                    throw new Error(`Printing job ${roll.printingJobId} is already recorded on this roll`);
+                }
+                tx.update(docRef, {
+                    printingJobId: jobId,
+                    printingJobAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    printingJobBy: userEmail || null
+                });
+            });
+        },
+
         // Get a child roll by ID (new rolls use their label code as the ID)
         async getById(childRollId) {
             const db = DB._getDB();
@@ -497,6 +548,85 @@ const DB = {
         }
     },
 
+    // Offcut Reviews - one per kept offcut. The document ID is the secret code in the reviewer's email links.
+    // No sign-in is needed to open one or answer it: the code is the permission (see firestore.rules).
+    offcutReviews: {
+        _newToken() {
+            const bytes = crypto.getRandomValues(new Uint8Array(24));
+            return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+        },
+
+        // Latest review for an offcut master
+        async getByMaster(masterQR) {
+            const db = DB._getDB();
+            const snapshot = await db.collection('offcutReviews').where('masterQR', '==', masterQR).limit(1).get();
+            return snapshot.empty ? null : { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+        },
+
+        // Open a review by the code in its email link (null if there's no such review)
+        async get(token) {
+            const doc = await DB._getDB().collection('offcutReviews').doc(token).get();
+            return doc.exists ? { id: doc.id, ...doc.data() } : null;
+        },
+
+        // Email the reviewer through EmailJS. Throws if it could not be sent.
+        async sendEmail(token) {
+            const review = await this.get(token);
+            if (!review) {
+                throw new Error('Review not found');
+            }
+            const reviewUrl = `${DB.PRODUCTION_URL}/offcut-review?token=${token}`;
+            const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    service_id: DB.EMAILJS.serviceId,
+                    template_id: DB.EMAILJS.templateId,
+                    user_id: DB.EMAILJS.publicKey,
+                    template_params: {
+                        label_no: review.labelNo,
+                        lot_number: review.lotNumber,
+                        stock_number: review.stockNumber,
+                        width_mm: review.widthMm,
+                        length_m: review.lengthM,
+                        parent_master: review.parentMasterQR,
+                        save_url: `${reviewUrl}&decision=save`,
+                        discard_url: `${reviewUrl}&decision=discard`
+                    }
+                })
+            });
+            if (!response.ok) {
+                throw new Error(`Review email not sent (${response.status})`);
+            }
+        },
+
+        // Record the reviewer's answer on the review and its offcut together. The first answer is final.
+        async answer(token, decision) {
+            const db = DB._getDB();
+            const ref = db.collection('offcutReviews').doc(token);
+            const status = decision === 'save' ? DB.OFFCUT_REVIEW.APPROVED : DB.OFFCUT_REVIEW.DISCARDED;
+            return db.runTransaction(async (tx) => {
+                const doc = await tx.get(ref);
+                if (!doc.exists) {
+                    throw new Error('Review not found');
+                }
+                const review = doc.data();
+                if (review.status !== DB.OFFCUT_REVIEW.PENDING) {
+                    return { ...review, alreadyAnswered: true };
+                }
+                const now = firebase.firestore.FieldValue.serverTimestamp();
+                tx.update(ref, { status: status, decidedAt: now });
+                tx.update(db.collection('masterRolls').doc(review.masterRollId), {
+                    reviewStatus: status,
+                    reviewedAt: now,
+                    reviewToken: token,
+                    ...(status === DB.OFFCUT_REVIEW.DISCARDED ? { status: 'discarded' } : {})
+                });
+                return { ...review, status: status };
+            });
+        }
+    },
+
     // Slitting Run Operations - one run cuts one length off a master into one or more lanes
     slitRuns: {
         // All runs for a master roll, oldest first
@@ -532,6 +662,7 @@ const DB = {
             const runRef = db.collection('slitRuns').doc();
             const labelRefs = allCodes.map(code => db.collection('rollLabels').doc(code));
             const offcutMasterRef = keepOffcut ? db.collection('masterRolls').doc() : null;
+            const reviewToken = keepOffcut && DB.OFFCUT_REVIEW_ENABLED ? DB.offcutReviews._newToken() : null;
 
             return db.runTransaction(async (tx) => {
                 // Firestore needs all reads before any writes
@@ -541,6 +672,12 @@ const DB = {
                 const master = masterDoc.data();
                 if (!DB.isMeterTracked(master)) {
                     throw new Error('This master roll was slit the old way and has no meters to track');
+                }
+                if (DB.isWaitingForReview(master)) {
+                    throw new Error('This offcut is waiting for review and cannot be slit yet');
+                }
+                if (DB.isDiscarded(master)) {
+                    throw new Error('This offcut was discarded');
                 }
                 const left = DB.metersLeft(master);
                 if (lengthM > left) {
@@ -614,6 +751,7 @@ const DB = {
                         stockNumber: offcutStock,
                         status: 'registered',
                         isOffcut: true,
+                        ...(reviewToken ? { reviewStatus: DB.OFFCUT_REVIEW.PENDING } : {}),
                         parentMasterQR: masterRollQR,
                         fromRunId: runRef.id,
                         currentDepartment: DB.DEPARTMENTS.INVENTORY,
@@ -630,6 +768,21 @@ const DB = {
                         linkedAt: now
                     });
                     tx.set(offcutCounterRef, { next: offcutCount + 1 }, { merge: true });
+                    if (reviewToken) {
+                        tx.set(db.collection('offcutReviews').doc(reviewToken), {
+                            masterRollId: offcutMasterRef.id,
+                            masterQR: offcut.labelCode,
+                            labelNo: labelDocs[offcutLabelIndex].data().shortNo,
+                            lotNumber: master.lotNumber,
+                            stockNumber: offcutStock,
+                            widthMm: offcutWidth,
+                            lengthM: lengthM,
+                            parentMasterQR: masterRollQR,
+                            status: DB.OFFCUT_REVIEW.PENDING,
+                            createdBy: userEmail || null,
+                            createdAt: now
+                        });
+                    }
                 }
 
                 tx.set(runRef, {
@@ -663,7 +816,7 @@ const DB = {
                 }
                 tx.update(masterRef, masterUpdate);
 
-                return { runId: runRef.id, runNumber: runNumber, remaining: remaining, offcutWidth: offcutWidth, offcutAction: offcutAction, offcutStockNumber: offcutStock };
+                return { runId: runRef.id, runNumber: runNumber, remaining: remaining, offcutWidth: offcutWidth, offcutAction: offcutAction, offcutStockNumber: offcutStock, reviewToken: reviewToken };
             });
         }
     },

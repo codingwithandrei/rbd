@@ -44,6 +44,27 @@
                     <div id="actionMessage"></div>
                 </div>
 
+                <!-- Printing: new job number when Printing gets the roll -->
+                <div id="printingJob" style="display: none;">
+                    <h3 class="form-title" style="font-size: 1.3rem; margin-bottom: 16px;">Printing job number</h3>
+                    <div id="printingJobEntry">
+                        <div class="form-group">
+                            <label for="printingJobNumber" class="form-label">Job Number *</label>
+                            <input type="text" id="printingJobNumber" class="form-input" placeholder="Enter the Printing job number" onkeydown="if (event.key === 'Enter') reviewPrintingJob()">
+                        </div>
+                        <button type="button" class="btn btn-primary btn-block" onclick="reviewPrintingJob()">Next</button>
+                    </div>
+                    <div id="printingJobConfirm" style="display: none; text-align: center;">
+                        <p style="color: var(--gray-600);">Is this right? It can't be changed after saving.</p>
+                        <p id="printingJobReview" style="font-size: 2rem; font-weight: 700; margin: 12px 0 20px; overflow-wrap: anywhere;"></p>
+                        <div class="button-group" style="margin-top: 0;">
+                            <button type="button" class="btn btn-secondary" onclick="editPrintingJob()">Change</button>
+                            <button type="button" id="savePrintingJobBtn" class="btn btn-primary" onclick="savePrintingJob()">Save Job Number</button>
+                        </div>
+                    </div>
+                    <div id="printingJobMessage"></div>
+                </div>
+
                 <div class="button-group" style="margin-top: 30px;" id="rollButtons"></div>
             </div>
         </main>
@@ -62,9 +83,9 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <script src="firebase-config.js"></script>
     <script src="auth.js"></script>
-    <script src="database.js?v=20261031"></script>
+    <script src="database.js?v=20261103b"></script>
     <script src="app.js"></script>
     <script src="roll-labels-print.js?v=20261030"></script>
-    <script src="roll.js?v=20261030"></script>
+    <script src="roll.js?v=20261103"></script>
 </body>
 </html>

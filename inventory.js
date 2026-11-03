@@ -101,7 +101,7 @@ async function displayStockGroups() {
         // Show loading state
         container.innerHTML = '<p style="text-align: center; padding: 20px;">Loading inventory...</p>';
         
-        const masterRolls = await DB.masterRolls.getAll();
+        const masterRolls = (await DB.masterRolls.getAll()).filter(m => !DB.isDiscarded(m));
         console.log('📊 Master rolls fetched:', masterRolls);
         
         const qrCodes = await DB.qrCodes.getAll();
@@ -295,7 +295,7 @@ function selectStock(stockNumber) {
 
 async function displayLotsForStock(stockNumber) {
     const container = document.getElementById('inventoryContainer');
-    const masterRolls = await DB.masterRolls.getAll();
+    const masterRolls = (await DB.masterRolls.getAll()).filter(m => !DB.isDiscarded(m));
     const qrCodes = await DB.qrCodes.getAll();
     
     // Combine master rolls and QR codes
@@ -316,6 +316,7 @@ async function displayLotsForStock(stockNumber) {
             widthMm: roll.widthMm,
             isOffcut: roll.isOffcut,
             labelNo: roll.labelNo,
+            reviewStatus: roll.reviewStatus,
             isRegistered: true
         };
     });
@@ -384,7 +385,7 @@ async function displayLotsForStock(stockNumber) {
                         <div class="lot-card-header">
                             <h4>Lot Number: ${roll.lotNumber}</h4>
                             <div class="lot-status-badge ${isUnregistered ? 'unregistered' : (isSlit ? 'slit' : 'registered')}">
-                                ${isUnregistered ? 'NOT REGISTERED' : (roll.status === 'used_up' ? 'USED UP' : (isSlit ? 'SLIT' : 'REGISTERED'))}
+                                ${isUnregistered ? 'NOT REGISTERED' : (DB.isWaitingForReview(roll) ? 'WAITING FOR REVIEW' : (roll.status === 'used_up' ? 'USED UP' : (isSlit ? 'SLIT' : 'REGISTERED')))}
                             </div>
                         </div>
                         <div class="lot-card-body">
@@ -455,7 +456,7 @@ function selectLot(stockNumber, lotNumber) {
 
 async function displayLotDetails(stockNumber, lotNumber) {
     const container = document.getElementById('inventoryContainer');
-    const masterRolls = await DB.masterRolls.getAll();
+    const masterRolls = (await DB.masterRolls.getAll()).filter(m => !DB.isDiscarded(m));
     const qrCodes = await DB.qrCodes.getAll();
     
     // Find the specific master roll or QR code
@@ -589,7 +590,7 @@ async function displayLotDetails(stockNumber, lotNumber) {
                     <span class="detail-label">Status:</span>
                     <span class="detail-value">
                         <span class="status-badge ${isUnregistered ? 'unregistered' : masterRoll.status}">
-                            ${isUnregistered ? 'NOT REGISTERED' : masterRoll.status.replace('_', ' ').toUpperCase()}
+                            ${isUnregistered ? 'NOT REGISTERED' : (DB.isWaitingForReview(masterRoll) ? 'WAITING FOR REVIEW' : masterRoll.status.replace('_', ' ').toUpperCase())}
                         </span>
                     </span>
                 </div>
@@ -721,6 +722,7 @@ async function displayLotDetails(stockNumber, lotNumber) {
                                     <span class="roll-detail-width">${roll.width}mm${roll.lengthM ? ` × ${roll.lengthM}m` : ''}</span>
                                     ${roll.jobId ? `<span style="margin-left: 12px; color: var(--gray-600); font-size: 0.9rem;">Slit Job: ${roll.jobId}</span>` : ''}
                                     ${usedJobId && usedJobId !== roll.jobId ? `<span style="margin-left: 12px; color: var(--error-red); font-size: 0.9rem; font-weight: 500;">Used Job: ${usedJobId}</span>` : ''}
+                                    ${roll.printingJobId ? `<span style="margin-left: 12px; color: var(--primary-blue); font-size: 0.9rem; font-weight: 500;">Printing Job: ${roll.printingJobId}</span>` : ''}
                                     ${roll.usedAt ? `
                                         <span class="roll-detail-date" style="display: block; margin-top: 8px; font-size: 0.85rem; color: var(--gray-600);">Used: ${new Date(roll.usedAt).toLocaleString()}</span>
                                     ` : `
@@ -816,7 +818,7 @@ async function performSearch(query) {
     
     try {
         // Get all data
-        const masterRolls = await DB.masterRolls.getAll();
+        const masterRolls = (await DB.masterRolls.getAll()).filter(m => !DB.isDiscarded(m));
         const qrCodes = await DB.qrCodes.getAll();
         const childRolls = await DB.childRolls.getAll();
         
@@ -1057,7 +1059,7 @@ async function exportToExcel() {
         });
         
         csvContent += '\n\n=== CHILD ROLLS ===\n';
-        csvContent += 'ID,Master Roll QR,Width (mm),Status,Job ID,Used Job ID,Created At,Used At\n';
+        csvContent += 'ID,Master Roll QR,Width (mm),Status,Job ID,Used Job ID,Printing Job ID,Created At,Used At\n';
         childRolls.forEach(roll => {
             const id = (roll.id || '').replace(/"/g, '""');
             const masterRollQR = (roll.masterRollQR || '').replace(/"/g, '""');
@@ -1065,9 +1067,10 @@ async function exportToExcel() {
             const status = (roll.status || 'N/A').replace(/"/g, '""');
             const jobId = (roll.jobId || 'N/A').replace(/"/g, '""');
             const usedJobId = (roll.usedJobId || 'N/A').replace(/"/g, '""');
+            const printingJobId = (roll.printingJobId || 'N/A').replace(/"/g, '""');
             const createdAt = roll.createdAt ? new Date(roll.createdAt).toLocaleString() : 'N/A';
             const usedAt = roll.usedAt ? new Date(roll.usedAt).toLocaleString() : 'N/A';
-            csvContent += `"${id}","${masterRollQR}","${width}","${status}","${jobId}","${usedJobId}","${createdAt}","${usedAt}"\n`;
+            csvContent += `"${id}","${masterRollQR}","${width}","${status}","${jobId}","${usedJobId}","${printingJobId}","${createdAt}","${usedAt}"\n`;
         });
         
         csvContent += '\n\n=== SCAN EVENTS ===\n';

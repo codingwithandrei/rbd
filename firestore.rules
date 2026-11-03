@@ -52,8 +52,17 @@ service cloud.firestore {
       allow create: if isAuthenticated() && (isAdmin() || hasRole('operator'));
       allow update: if isAuthenticated() && (isAdmin() || hasRole('operator'));
       allow delete: if isAdmin();
+
+      // The offcut reviewer has no account: their email link's code lets them answer once.
+      // The code is only saved here after answering, and an answered review can't change.
+      allow update: if resource.data.reviewStatus == 'pending'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reviewStatus', 'reviewedAt', 'reviewToken', 'status'])
+        && ((request.resource.data.reviewStatus == 'approved' && request.resource.data.status == resource.data.status)
+          || (request.resource.data.reviewStatus == 'discarded' && request.resource.data.status == 'discarded'))
+        && getAfter(/databases/$(database)/documents/offcutReviews/$(request.resource.data.reviewToken)).data.masterRollId == rollId
+        && getAfter(/databases/$(database)/documents/offcutReviews/$(request.resource.data.reviewToken)).data.status == request.resource.data.reviewStatus;
     }
-    
+
     // Child Rolls collection
     // Allow unauthenticated reads (for viewing child rolls when scanning QR)
     match /childRolls/{childRollId} {
@@ -96,6 +105,19 @@ service cloud.firestore {
     match /counters/{counterId} {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated() && (isAdmin() || hasRole('operator'));
+    }
+
+    // Offcut Reviews - the document ID is the secret code in the reviewer's email links.
+    // Anyone with the code can open it and answer once; only workers can list them.
+    match /offcutReviews/{reviewToken} {
+      allow get: if true;
+      allow list: if isAuthenticated() && (isAdmin() || hasRole('operator'));
+      allow create: if isAuthenticated() && (isAdmin() || hasRole('operator'));
+      allow update: if resource.data.status == 'pending'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decidedAt'])
+        && request.resource.data.status in ['approved', 'discarded']
+        && getAfter(/databases/$(database)/documents/masterRolls/$(resource.data.masterRollId)).data.reviewStatus == request.resource.data.status;
+      allow delete: if false;
     }
 
     // Deleted Stock Numbers collection

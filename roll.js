@@ -3,6 +3,7 @@
 let label = null;
 let roll = null;
 let signedIn = false;
+let offcutQR = null;
 
 document.addEventListener('DOMContentLoaded', async function() {
     try {
@@ -91,12 +92,14 @@ async function loadOffcut() {
 
     const left = DB.metersLeft(offcut);
     document.getElementById('rollSubtitle').textContent = `Offcut · ${offcut.widthMm}mm × ${left.toLocaleString()} m left`;
+    const waiting = DB.isWaitingForReview(offcut);
+    const discarded = DB.isDiscarded(offcut);
     const items = [
         ['Width', `${offcut.widthMm} mm`],
         ['Meters left', `${left.toLocaleString()} of ${offcut.lengthTotal.toLocaleString()} m`],
         ['Lot', offcut.lotNumber],
         ['Stock', offcut.stockNumber],
-        ['Status', left > 0 ? 'In inventory (offcut master)' : 'Used up'],
+        ['Status', discarded ? 'Discarded' : waiting ? 'Waiting for review' : left > 0 ? 'In inventory (offcut master)' : 'Used up'],
         ['Created', offcut.createdAt ? new Date(offcut.createdAt).toLocaleDateString() : '-']
     ];
     if (signedIn) {
@@ -110,19 +113,39 @@ async function loadOffcut() {
 
     // Reprint uses the same label layout as child rolls
     roll = { width: offcut.widthMm, lengthM: offcut.lengthTotal, lotNumber: offcut.lotNumber, stockNumber: offcut.stockNumber, createdAt: offcut.createdAt, isOffcut: true };
+    offcutQR = offcut.qrValue;
     document.getElementById('rollButtons').innerHTML = signedIn
         ? `
-            ${left > 0 ? `<button type="button" class="btn btn-primary" onclick="navigateTo('job-assignment.html?qr=${encodeURIComponent(offcut.qrValue)}')">Slit This Offcut</button>` : ''}
-            <button type="button" class="btn btn-yellow" onclick="reprintLabel()">Reprint Label</button>
+            ${left > 0 && !waiting && !discarded ? `<button type="button" class="btn btn-primary" onclick="navigateTo('job-assignment.html?qr=${encodeURIComponent(offcut.qrValue)}')">Slit This Offcut</button>` : ''}
+            ${waiting ? '<button type="button" id="resendReviewBtn" class="btn btn-primary" onclick="resendReviewEmail()">Resend Review Email</button>' : ''}
+            ${!discarded ? '<button type="button" class="btn btn-yellow" onclick="reprintLabel()">Reprint Label</button>' : ''}
         `
         : `
             <button type="button" class="btn btn-primary" onclick="signInToUpdate()">Sign in to update this roll</button>
         `;
 }
 
+// A signed-in worker's copy of the review email, for when the first one failed or got lost
+async function resendReviewEmail() {
+    const button = document.getElementById('resendReviewBtn');
+    button.disabled = true;
+    try {
+        const review = await DB.offcutReviews.getByMaster(offcutQR);
+        if (!review) throw new Error('No review found for this offcut');
+        await DB.offcutReviews.sendEmail(review.id);
+        document.getElementById('rollMessage').innerHTML = '<div class="success-message" style="margin-bottom: 20px;"><strong>Review email sent.</strong></div>';
+    } catch (error) {
+        console.error('Error resending review email:', error);
+        document.getElementById('rollMessage').innerHTML = `<div class="error-message" style="margin-bottom: 20px;"><strong>Not sent.</strong> ${error.message}</div>`;
+    } finally {
+        button.disabled = false;
+    }
+}
+
 function statusText(r) {
     if (r.status === 'AVAILABLE') return 'Available (at Slitting)';
-    return r.printed ? 'Sent to Printing' : 'Used for Job';
+    if (r.printed) return r.printingJobId ? 'At Printing' : 'Sent to Printing';
+    return 'Used for Job';
 }
 
 function renderRoll() {
@@ -140,8 +163,12 @@ function renderRoll() {
     // Job numbers and history are for workers only
     if (signedIn) {
         items.push(['Slit for job', roll.jobId || '-']);
-        if (roll.usedJobId) items.push(['Used on job', roll.usedJobId]);
-        if (roll.usedAt) items.push(['Used', new Date(roll.usedAt).toLocaleString()]);
+        if (roll.usedJobId) items.push([roll.printed ? 'Sent to Printing for job' : 'Used on job', roll.usedJobId]);
+        if (roll.usedAt) items.push([roll.printed ? 'Sent to Printing' : 'Used', new Date(roll.usedAt).toLocaleString()]);
+        if (roll.printingJobId) {
+            items.push(['Printing job', roll.printingJobId]);
+            items.push(['Printing job entered', `${roll.printingJobAt ? new Date(roll.printingJobAt).toLocaleString() : '-'}${roll.printingJobBy ? ' by ' + roll.printingJobBy : ''}`]);
+        }
         items.push(['Master roll', `${roll.masterRollQR} · run ${roll.runNumber}, roll ${roll.lane}`]);
     }
 
@@ -164,6 +191,12 @@ function renderRoll() {
     } else {
         actions.style.display = 'none';
     }
+
+    // Printing enters its job number once, when it gets the roll
+    const printingNeedsJob = signedIn && roll.printed && !roll.printingJobId;
+    document.getElementById('printingJob').style.display = printingNeedsJob ? 'block' : 'none';
+    document.getElementById('printingJobEntry').style.display = 'block';
+    document.getElementById('printingJobConfirm').style.display = 'none';
 
     document.getElementById('rollButtons').innerHTML = signedIn
         ? `
@@ -215,6 +248,60 @@ async function confirmDestination(department) {
     } finally {
         document.getElementById('btnPrinting').disabled = false;
         document.getElementById('btnProduction').disabled = false;
+    }
+}
+
+// The number can only be entered once, so show it big and ask before saving
+function reviewPrintingJob() {
+    const job = document.getElementById('printingJobNumber').value.trim();
+    const message = document.getElementById('printingJobMessage');
+    if (!job) {
+        message.innerHTML = '<div class="error-message" style="margin-top: 16px;">Please enter the job number.</div>';
+        return;
+    }
+    message.innerHTML = '';
+    document.getElementById('printingJobReview').textContent = job;
+    document.getElementById('printingJobEntry').style.display = 'none';
+    document.getElementById('printingJobConfirm').style.display = 'block';
+}
+
+function editPrintingJob() {
+    document.getElementById('printingJobConfirm').style.display = 'none';
+    document.getElementById('printingJobEntry').style.display = 'block';
+    document.getElementById('printingJobNumber').focus();
+}
+
+async function savePrintingJob() {
+    const job = document.getElementById('printingJobNumber').value.trim();
+    const message = document.getElementById('printingJobMessage');
+    const button = document.getElementById('savePrintingJobBtn');
+    button.disabled = true;
+    message.innerHTML = '';
+    try {
+        const user = await Auth.getCurrentUser();
+        await DB.childRolls.setPrintingJob(roll.id, job, user ? user.email : null);
+        await DB.scanEvents.create({
+            qrValue: roll.masterRollQR,
+            action: 'printing_job',
+            childRollId: roll.id,
+            jobId: job,
+            department: DB.DEPARTMENTS.PRINTING
+        });
+        await loadRoll();
+        document.getElementById('rollMessage').innerHTML = `
+            <div class="success-message" style="margin-bottom: 20px;">
+                <strong>Printing job ${job} saved.</strong>
+            </div>
+        `;
+    } catch (error) {
+        console.error('Error saving printing job:', error);
+        message.innerHTML = `
+            <div class="error-message" style="margin-top: 16px;">
+                <p><strong>Not saved.</strong> ${error.message}</p>
+            </div>
+        `;
+    } finally {
+        button.disabled = false;
     }
 }
 

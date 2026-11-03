@@ -59,6 +59,19 @@ document.addEventListener('DOMContentLoaded', async function() {
     masterWidthMm = DB.masterWidth(masterRoll);
     await renderMasterSummary();
 
+    if (DB.isWaitingForReview(masterRoll) || DB.isDiscarded(masterRoll)) {
+        showPageMessage(DB.isDiscarded(masterRoll)
+            ? `<div class="error-message">
+                <h3 style="margin-bottom: 8px;">Offcut discarded</h3>
+                <p>The reviewer discarded this offcut, so it cannot be slit.</p>
+            </div>`
+            : `<div class="info-message">
+                <h3 style="margin-bottom: 8px;">Waiting for review</h3>
+                <p>This offcut cannot be slit until the reviewer answers the email and saves it.</p>
+            </div>`);
+        return;
+    }
+
     if (metersLeft <= 0) {
         showPageMessage(`
             <div class="info-message">
@@ -334,7 +347,7 @@ function renderOffcutPanel() {
     }
     panel.innerHTML = offcutKeep ? `
         <div class="info-message">
-            <p><strong>Offcut ${offcut}mm × ${lengthM.toLocaleString()} m</strong> goes back to inventory as a new master roll (lot ${masterRoll.lotNumber}). Label it like the other rolls.</p>
+            <p><strong>Offcut ${offcut}mm × ${lengthM.toLocaleString()} m</strong> goes to inventory as a new master roll (lot ${masterRoll.lotNumber})${DB.OFFCUT_REVIEW_ENABLED ? ', held until the reviewer saves it' : ''}. Label it like the other rolls.</p>
             <p style="margin: 8px 0 12px;">Stock number: <strong id="offcutStock">…</strong></p>
             <button type="button" class="btn btn-secondary btn-small" onclick="toggleOffcut()">Scrap it instead</button>
         </div>
@@ -525,6 +538,17 @@ async function finishRun() {
             userEmail: userEmail
         });
 
+        // The run is saved either way; a failed email can be resent from the offcut's page
+        let reviewEmailSent = false;
+        if (result.reviewToken) {
+            try {
+                await DB.offcutReviews.sendEmail(result.reviewToken);
+                reviewEmailSent = true;
+            } catch (error) {
+                console.error('Error sending review email:', error);
+            }
+        }
+
         await DB.scanEvents.create({
             qrValue: qrValue,
             action: 'slitting',
@@ -539,7 +563,7 @@ async function finishRun() {
             <ul style="margin: 12px 0 12px 20px;">
                 ${slots.slice(0, widths.length).map((s, i) => `<li>${s.shortNo}: ${widths[i]}mm</li>`).join('')}
             </ul>
-            ${result.offcutAction === 'kept' ? `<p>Offcut ${result.offcutWidth}mm × ${lengthM.toLocaleString()} m → back to inventory as ${slots[widths.length].shortNo} (stock ${result.offcutStockNumber})</p>` : ''}
+            ${result.offcutAction === 'kept' ? `<p>Offcut ${result.offcutWidth}mm × ${lengthM.toLocaleString()} m → ${result.reviewToken ? 'waiting for review' : 'back to inventory'} as ${slots[widths.length].shortNo} (stock ${result.offcutStockNumber})${!result.reviewToken ? '' : reviewEmailSent ? '. Review email sent.' : `. <strong>The review email did not send.</strong> Open ${slots[widths.length].shortNo}'s page and tap Resend Review Email.`}</p>` : ''}
             ${result.offcutAction === 'scrapped' ? `<p>Offcut ${result.offcutWidth}mm scrapped</p>` : ''}
             <p style="font-size: 1.15rem;"><strong>Master now has ${result.remaining.toLocaleString()} m left</strong></p>
             ${result.remaining === 0 ? '<p style="margin-top: 8px;">This master roll is used up.</p>' : ''}

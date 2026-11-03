@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="no-referrer">
+    <meta name="robots" content="noindex">
+    <title>Offcut Review - RBD App</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1 class="logo">Offcut Review</h1>
+            <p class="subtitle">Save this offcut to inventory, or discard it</p>
+        </header>
+
+        <main class="main-content">
+            <div class="form-container">
+                <div id="reviewMessage"><p style="text-align: center; color: var(--gray-600);">Loading…</p></div>
+                <div id="reviewInfo" class="roll-info-grid" style="margin-bottom: 24px;"></div>
+                <div id="reviewPrompt" style="display: none;">
+                    <h3 id="reviewQuestion" class="form-title" style="font-size: 1.3rem; margin-bottom: 16px;"></h3>
+                    <div id="reviewButtons" class="button-group" style="margin-top: 0;">
+                        <button type="button" id="saveBtn" class="btn btn-primary" onclick="answer('save')">Save</button>
+                        <button type="button" id="discardBtn" class="btn btn-secondary" onclick="answer('discard')">Discard</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <img src="rbd-logo.png.png" alt="RBD Logo" style="max-width: 80px; height: auto; margin-bottom: 8px; display: block; margin-left: auto; margin-right: auto;">
+            <p>&copy; 2025 RBD Packaging</p>
+        </footer>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="firebase-config.js"></script>
+    <script src="auth.js"></script>
+    <script src="database.js?v=20261103b"></script>
+    <script>
+        const pageParams = new URLSearchParams(window.location.search);
+        const token = pageParams.get('token');
+        // The email button only preselects the answer; nothing is saved until a tap here,
+        // because some email systems open links on their own
+        const preselected = pageParams.get('decision');
+
+        function showMessage(kind, title, text) {
+            const box = document.createElement('div');
+            box.className = kind === 'error' ? 'error-message' : kind === 'success' ? 'success-message' : 'info-message';
+            const heading = document.createElement('h3');
+            heading.style.marginBottom = '8px';
+            heading.textContent = title;
+            const body = document.createElement('p');
+            body.textContent = text;
+            box.append(heading, body);
+            const message = document.getElementById('reviewMessage');
+            message.innerHTML = '';
+            message.appendChild(box);
+        }
+
+        function renderInfo(review) {
+            const info = document.getElementById('reviewInfo');
+            info.innerHTML = '';
+            [
+                ['Label', review.labelNo],
+                ['Lot', review.lotNumber],
+                ['Stock number', review.stockNumber],
+                ['Width', `${review.widthMm} mm`],
+                ['Length', `${Number(review.lengthM).toLocaleString()} m`],
+                ['Cut from master', review.parentMasterQR]
+            ].forEach(([k, v]) => {
+                const item = document.createElement('div');
+                item.className = 'roll-info-item';
+                const key = document.createElement('span');
+                key.className = 'k';
+                key.textContent = k;
+                const value = document.createElement('span');
+                value.className = 'v';
+                value.textContent = v;
+                item.append(key, value);
+                info.appendChild(item);
+            });
+        }
+
+        function showAnswered(review) {
+            document.getElementById('reviewPrompt').style.display = 'none';
+            if (review.status === 'approved') {
+                showMessage('success', 'Saved', `This offcut is in inventory and can be slit. Enter stock number ${review.stockNumber} in your system.`);
+            } else {
+                showMessage('info', 'Discarded', 'This offcut was discarded and removed from inventory.');
+            }
+        }
+
+        async function answer(decision) {
+            document.getElementById('saveBtn').disabled = true;
+            document.getElementById('discardBtn').disabled = true;
+            try {
+                showAnswered(await DB.offcutReviews.answer(token, decision));
+            } catch (error) {
+                console.error('Error saving answer:', error);
+                showMessage('error', 'Not saved', 'Your answer was not saved. Check your connection and try again.');
+                document.getElementById('saveBtn').disabled = false;
+                document.getElementById('discardBtn').disabled = false;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', async function() {
+            if (!token) {
+                showMessage('error', 'Link not valid', 'Open this page from the button in the review email.');
+                return;
+            }
+            let review;
+            try {
+                await DB.init();
+                review = await DB.offcutReviews.get(token);
+                if (!review) throw new Error('Review not found');
+            } catch (error) {
+                console.error('Error loading review:', error);
+                showMessage('error', 'Could not load this offcut', 'The link may not be valid, or there is no connection. Try again from the email.');
+                return;
+            }
+
+            renderInfo(review);
+            if (review.status !== 'pending') {
+                showAnswered(review);
+                return;
+            }
+            document.getElementById('reviewMessage').innerHTML = '';
+            document.getElementById('reviewPrompt').style.display = 'block';
+            document.getElementById('reviewQuestion').textContent =
+                preselected === 'save' ? 'Save this offcut? Tap Save to confirm.'
+                : preselected === 'discard' ? 'Discard this offcut? Tap Discard to confirm.'
+                : 'Save or discard this offcut?';
+            // Highlight the button they chose in the email
+            if (preselected === 'discard') {
+                document.getElementById('saveBtn').className = 'btn btn-secondary';
+                document.getElementById('discardBtn').className = 'btn btn-primary';
+            }
+        });
+    </script>
+</body>
+</html>
