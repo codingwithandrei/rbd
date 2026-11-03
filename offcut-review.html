@@ -21,6 +21,11 @@
                 <div id="reviewInfo" class="roll-info-grid" style="margin-bottom: 24px;"></div>
                 <div id="reviewPrompt" style="display: none;">
                     <h3 id="reviewQuestion" class="form-title" style="font-size: 1.3rem; margin-bottom: 16px;"></h3>
+                    <div class="form-group">
+                        <label for="reviewStock" class="form-label">Stock number</label>
+                        <input type="text" id="reviewStock" class="form-input" maxlength="40" autocomplete="off">
+                        <p style="color: var(--gray-600); font-size: 0.9rem; margin-top: 8px;">Filled in automatically. Change it if this number is already used in your system.</p>
+                    </div>
                     <div id="reviewButtons" class="button-group" style="margin-top: 0;">
                         <button type="button" id="saveBtn" class="btn btn-primary" onclick="answer('save')">Save</button>
                         <button type="button" id="discardBtn" class="btn btn-secondary" onclick="answer('discard')">Discard</button>
@@ -40,7 +45,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <script src="firebase-config.js"></script>
     <script src="auth.js"></script>
-    <script src="database.js?v=20261103b"></script>
+    <script src="database.js?v=20261103d"></script>
     <script>
         const pageParams = new URLSearchParams(window.location.search);
         const token = pageParams.get('token');
@@ -72,7 +77,7 @@
                 ['Width', `${review.widthMm} mm`],
                 ['Length', `${Number(review.lengthM).toLocaleString()} m`],
                 ['Cut from master', review.parentMasterQR]
-            ].forEach(([k, v]) => {
+            ].filter(([k]) => k !== 'Stock number' || review.status !== 'pending').forEach(([k, v]) => {
                 const item = document.createElement('div');
                 item.className = 'roll-info-item';
                 const key = document.createElement('span');
@@ -88,6 +93,7 @@
 
         function showAnswered(review) {
             document.getElementById('reviewPrompt').style.display = 'none';
+            renderInfo(review);
             if (review.status === 'approved') {
                 showMessage('success', 'Saved', `This offcut is in inventory and can be slit. Enter stock number ${review.stockNumber} in your system.`);
             } else {
@@ -99,10 +105,11 @@
             document.getElementById('saveBtn').disabled = true;
             document.getElementById('discardBtn').disabled = true;
             try {
-                showAnswered(await DB.offcutReviews.answer(token, decision));
+                const stockNumber = document.getElementById('reviewStock').value.trim();
+                showAnswered(await DB.offcutReviews.answer(token, decision, stockNumber));
             } catch (error) {
                 console.error('Error saving answer:', error);
-                showMessage('error', 'Not saved', 'Your answer was not saved. Check your connection and try again.');
+                showMessage('error', 'Not saved', error.forReviewer ? error.message : 'Your answer was not saved. Check your connection and try again.');
                 document.getElementById('saveBtn').disabled = false;
                 document.getElementById('discardBtn').disabled = false;
             }
@@ -131,6 +138,7 @@
             }
             document.getElementById('reviewMessage').innerHTML = '';
             document.getElementById('reviewPrompt').style.display = 'block';
+            document.getElementById('reviewStock').value = review.stockNumber;
             document.getElementById('reviewQuestion').textContent =
                 preselected === 'save' ? 'Save this offcut? Tap Save to confirm.'
                 : preselected === 'discard' ? 'Discard this offcut? Tap Discard to confirm.'

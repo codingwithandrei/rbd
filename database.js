@@ -600,11 +600,40 @@ const DB = {
             }
         },
 
+        // A stock number the reviewer can save: refused if it's badly formed or on another roll.
+        // Throws an error whose message is meant for the reviewer.
+        async _checkStockNumber(stockNumber, masterRollId) {
+            if (!/^[A-Za-z0-9-]{1,40}$/.test(stockNumber)) {
+                const error = new Error('Enter a stock number using only letters, numbers and dashes.');
+                error.forReviewer = true;
+                throw error;
+            }
+            const snapshot = await DB._getDB().collection('masterRolls').where('stockNumber', '==', stockNumber).get();
+            const taken = snapshot.docs.find(doc => doc.id !== masterRollId && !DB.isDiscarded(doc.data()));
+            if (taken) {
+                const error = new Error(`Stock number ${stockNumber} is already on lot ${taken.data().lotNumber}. Enter a different one.`);
+                error.forReviewer = true;
+                throw error;
+            }
+        },
+
+        // The count at the end of an offcut stock number (041040010 at 400mm is 10), or null if it doesn't follow the pattern
+        _countFromStock(stockNumber, widthMm) {
+            const prefix = `${DB.OFFCUT_STOCK_PREFIX}${widthMm}`;
+            const rest = stockNumber.startsWith(prefix) ? stockNumber.slice(prefix.length) : '';
+            return /^[0-9]+$/.test(rest) ? parseInt(rest, 10) : null;
+        },
+
         // Record the reviewer's answer on the review and its offcut together. The first answer is final.
-        async answer(token, decision) {
+        // Saving can replace the automatic stock number if it's already used in the reviewer's own system.
+        async answer(token, decision, stockNumber) {
             const db = DB._getDB();
             const ref = db.collection('offcutReviews').doc(token);
             const status = decision === 'save' ? DB.OFFCUT_REVIEW.APPROVED : DB.OFFCUT_REVIEW.DISCARDED;
+            const current = await this.get(token);
+            if (current && current.status === DB.OFFCUT_REVIEW.PENDING && decision === 'save') {
+                await this._checkStockNumber(stockNumber, current.masterRollId);
+            }
             return db.runTransaction(async (tx) => {
                 const doc = await tx.get(ref);
                 if (!doc.exists) {
@@ -615,14 +644,25 @@ const DB = {
                     return { ...review, alreadyAnswered: true };
                 }
                 const now = firebase.firestore.FieldValue.serverTimestamp();
-                tx.update(ref, { status: status, decidedAt: now });
+                const finalStock = decision === 'save' ? stockNumber : review.stockNumber;
+
+                // If she saved a higher count (numbers up to 10 are already used), the next offcut continues from it
+                const count = decision === 'save' ? this._countFromStock(finalStock, review.widthMm) : null;
+                const counterRef = DB._offcutCounterRef(review.widthMm);
+                const counter = count !== null ? await tx.get(counterRef) : null;
+                if (counter && count >= (counter.exists ? counter.data().next : 1)) {
+                    tx.set(counterRef, { next: count + 1, lastReviewToken: token }, { merge: true });
+                }
+
+                tx.update(ref, { status: status, decidedAt: now, stockNumber: finalStock });
                 tx.update(db.collection('masterRolls').doc(review.masterRollId), {
                     reviewStatus: status,
                     reviewedAt: now,
                     reviewToken: token,
+                    stockNumber: finalStock,
                     ...(status === DB.OFFCUT_REVIEW.DISCARDED ? { status: 'discarded' } : {})
                 });
-                return { ...review, status: status };
+                return { ...review, status: status, stockNumber: finalStock };
             });
         }
     },

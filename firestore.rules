@@ -56,11 +56,12 @@ service cloud.firestore {
       // The offcut reviewer has no account: their email link's code lets them answer once.
       // The code is only saved here after answering, and an answered review can't change.
       allow update: if resource.data.reviewStatus == 'pending'
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reviewStatus', 'reviewedAt', 'reviewToken', 'status'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reviewStatus', 'reviewedAt', 'reviewToken', 'status', 'stockNumber'])
         && ((request.resource.data.reviewStatus == 'approved' && request.resource.data.status == resource.data.status)
           || (request.resource.data.reviewStatus == 'discarded' && request.resource.data.status == 'discarded'))
         && getAfter(/databases/$(database)/documents/offcutReviews/$(request.resource.data.reviewToken)).data.masterRollId == rollId
-        && getAfter(/databases/$(database)/documents/offcutReviews/$(request.resource.data.reviewToken)).data.status == request.resource.data.reviewStatus;
+        && getAfter(/databases/$(database)/documents/offcutReviews/$(request.resource.data.reviewToken)).data.status == request.resource.data.reviewStatus
+        && getAfter(/databases/$(database)/documents/offcutReviews/$(request.resource.data.reviewToken)).data.stockNumber == request.resource.data.stockNumber;
     }
 
     // Child Rolls collection
@@ -101,10 +102,19 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Counters (next roll label number)
+    // Counters (next roll label number, next offcut stock count per width)
     match /counters/{counterId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() || counterId.matches('offcut-[0-9]+');
       allow write: if isAuthenticated() && (isAdmin() || hasRole('operator'));
+
+      // The offcut reviewer can move an offcut count forward only, in the same save as answering their review
+      allow create, update: if counterId.matches('offcut-[0-9]+')
+        && request.resource.data.keys().hasOnly(['next', 'lastReviewToken'])
+        && request.resource.data.next is int
+        && (resource == null || request.resource.data.next > resource.data.next)
+        && get(/databases/$(database)/documents/offcutReviews/$(request.resource.data.lastReviewToken)).data.status == 'pending'
+        && getAfter(/databases/$(database)/documents/offcutReviews/$(request.resource.data.lastReviewToken)).data.status == 'approved'
+        && counterId == 'offcut-' + string(get(/databases/$(database)/documents/offcutReviews/$(request.resource.data.lastReviewToken)).data.widthMm);
     }
 
     // Offcut Reviews - the document ID is the secret code in the reviewer's email links.
@@ -114,8 +124,10 @@ service cloud.firestore {
       allow list: if isAuthenticated() && (isAdmin() || hasRole('operator'));
       allow create: if isAuthenticated() && (isAdmin() || hasRole('operator'));
       allow update: if resource.data.status == 'pending'
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decidedAt'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decidedAt', 'stockNumber'])
         && request.resource.data.status in ['approved', 'discarded']
+        && request.resource.data.stockNumber is string
+        && request.resource.data.stockNumber.matches('^[A-Za-z0-9-]{1,40}$')
         && getAfter(/databases/$(database)/documents/masterRolls/$(resource.data.masterRollId)).data.reviewStatus == request.resource.data.status;
       allow delete: if false;
     }
