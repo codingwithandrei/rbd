@@ -41,8 +41,8 @@ const DB = {
         return DB.offcutStockNumber(widthMm, counter.exists ? counter.data().next : 1);
     },
 
-    // On for local testing only until the real email has been tested. While off, kept offcuts go straight to inventory.
-    OFFCUT_REVIEW_ENABLED: window.location.hostname === 'localhost',
+    // While off, kept offcuts go straight to inventory.
+    OFFCUT_REVIEW_ENABLED: true,
 
     // EmailJS sends the review email. These IDs are public by design; the reviewer's address is set in the
     // EmailJS template, so this page can't send to anyone else.
