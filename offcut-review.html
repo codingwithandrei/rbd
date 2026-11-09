@@ -45,7 +45,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <script src="firebase-config.js"></script>
     <script src="auth.js"></script>
-    <script src="database.js?v=20261103e"></script>
+    <script src="database.js?v=20261109b"></script>
     <script>
         const pageParams = new URLSearchParams(window.location.search);
         const token = pageParams.get('token');
@@ -106,7 +106,20 @@
             document.getElementById('discardBtn').disabled = true;
             try {
                 const stockNumber = document.getElementById('reviewStock').value.trim();
-                showAnswered(await DB.offcutReviews.answer(token, decision, stockNumber));
+                const result = await DB.offcutReviews.answer(token, decision, stockNumber);
+                showAnswered(result);
+                // The save stands either way; only say something if the floor wasn't told
+                if (result.status === 'approved' && !result.alreadyAnswered) {
+                    try {
+                        await DB.offcutReviews.sendReadyEmail(result);
+                    } catch (error) {
+                        console.error('Error sending ready email:', error);
+                        const note = document.createElement('p');
+                        note.style.marginTop = '8px';
+                        note.textContent = 'The offcut is saved, but the "offcut ready" email did not send. Please let the floor know.';
+                        document.querySelector('#reviewMessage .success-message').appendChild(note);
+                    }
+                }
             } catch (error) {
                 console.error('Error saving answer:', error);
                 showMessage('error', 'Not saved', error.forReviewer ? error.message : 'Your answer was not saved. Check your connection and try again.');

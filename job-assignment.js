@@ -410,7 +410,7 @@ function renderSlots() {
                 : `<span>${i === current ? 'Scan a label…' : 'Waiting'}</span>`}
         </div>
     `).join('');
-    document.getElementById('finishRunBtn').disabled = current !== -1;
+    document.getElementById('toLengthBtn').disabled = current !== -1;
 }
 
 function setScanStatus(text, kind) {
@@ -421,7 +421,7 @@ function setScanStatus(text, kind) {
 
 async function startLabelScan() {
     if (currentSlotIndex() === -1) {
-        setScanStatus('All rolls labeled. Tap Finish Run.', 'ok');
+        setScanStatus('All rolls labeled. Tap Next: Confirm length.', 'ok');
         return;
     }
     setScanStatus(`${slotName(currentSlotIndex())} (${currentSlotIndex() + 1} of ${slots.length}): point at a blank label`);
@@ -490,7 +490,7 @@ async function checkAndLinkLabel(text) {
 
     if (currentSlotIndex() === -1) {
         await QRScanner.stop();
-        setScanStatus('All rolls labeled. Tap Finish Run.', 'ok');
+        setScanStatus('All rolls labeled. Tap Next: Confirm length.', 'ok');
     } else {
         setScanStatus(`✅ ${label.shortNo} → ${slotName(index)}. Now ${slotName(currentSlotIndex()).toLowerCase()} (${currentSlotIndex() + 1} of ${slots.length}).`, 'ok');
     }
@@ -511,10 +511,68 @@ function removeSlot(i) {
     startLabelScan();
 }
 
-// ---------- Step 4: save ----------
+// ---------- Step 4: actual length ----------
+
+// Rolls are cut to at least the target, usually up to this much longer
+const LENGTH_OVER_MAX = 100;
+let lengthWarned = null;  // the length the operator was already warned about
+
+function goToConfirmLength() {
+    if (currentSlotIndex() !== -1) return;
+    QRScanner.stop();
+    const rolls = `${widths.length} ${widths.length === 1 ? 'roll' : 'rolls'}${offcutHasSlot() ? ' and the offcut' : ''}`;
+    document.getElementById('lengthSummary').textContent =
+        `Measure what came off the slitter. The same length applies to all ${rolls}.`;
+    document.getElementById('lengthHint').textContent =
+        `Target ${lengthM.toLocaleString()} m. Usually ${lengthM.toLocaleString()}–${(lengthM + LENGTH_OVER_MAX).toLocaleString()} m. ${metersLeft.toLocaleString()} m left on the master.`;
+    const input = document.getElementById('actualLength');
+    if (!input.value) input.value = lengthM;
+    clearLengthWarning();
+    document.getElementById('finishError').innerHTML = '';
+    showStep('stepLength');
+    input.focus();
+}
+
+function backToLabels() {
+    showStep('stepLink');
+    renderSlots();
+    startLabelScan();
+}
+
+function clearLengthWarning() {
+    lengthWarned = null;
+    document.getElementById('lengthWarning').innerHTML = '';
+    document.getElementById('finishRunBtn').textContent = 'Finish Run';
+}
+
+// Unusual lengths save only after a second tap, so typos get caught
+function lengthWarning(actual) {
+    if (actual > metersLeft) {
+        return `${actual.toLocaleString()} m is more than the ${metersLeft.toLocaleString()} m left on the master. It will be marked as used up.`;
+    }
+    if (actual < lengthM || actual > lengthM + LENGTH_OVER_MAX) {
+        return `${actual.toLocaleString()} m is outside the usual ${lengthM.toLocaleString()}–${(lengthM + LENGTH_OVER_MAX).toLocaleString()} m.`;
+    }
+    return null;
+}
+
+// ---------- Step 5: save ----------
 
 async function finishRun() {
     if (isSubmitting || currentSlotIndex() !== -1) return;
+
+    const actual = parseInt(document.getElementById('actualLength').value, 10);
+    if (!actual || actual < 1) {
+        document.getElementById('finishError').innerHTML = '<div class="error-message">Enter the actual length cut.</div>';
+        return;
+    }
+    const warning = lengthWarning(actual);
+    if (warning && lengthWarned !== actual) {
+        lengthWarned = actual;
+        document.getElementById('lengthWarning').innerHTML = `<div class="info-message" style="margin-bottom: 16px;"><strong>Are you sure?</strong> ${warning} Check the number, or tap the button again to save it.</div>`;
+        document.getElementById('finishRunBtn').textContent = `Yes, save ${actual.toLocaleString()} m`;
+        return;
+    }
 
     const keepOffcut = offcutHasSlot();
 
@@ -529,7 +587,8 @@ async function finishRun() {
             masterRollQR: qrValue,
             jobId: jobNumber,
             widths: widths,
-            lengthM: lengthM,
+            lengthM: actual,
+            targetLengthM: lengthM,
             labelCodes: slots.slice(0, widths.length).map(s => s.code),
             offcut: {
                 keep: keepOffcut,
@@ -559,11 +618,11 @@ async function finishRun() {
         await QRScanner.stop();
         document.getElementById('doneDetails').innerHTML = `
             <p><strong>Run ${result.runNumber}</strong> · Job ${jobNumber}</p>
-            <p>${widths.length} ${widths.length === 1 ? 'roll' : 'rolls'} × ${lengthM.toLocaleString()} m</p>
+            <p>${widths.length} ${widths.length === 1 ? 'roll' : 'rolls'} × ${actual.toLocaleString()} m${actual !== lengthM ? ` (target ${lengthM.toLocaleString()} m)` : ''}</p>
             <ul style="margin: 12px 0 12px 20px;">
                 ${slots.slice(0, widths.length).map((s, i) => `<li>${s.shortNo}: ${widths[i]}mm</li>`).join('')}
             </ul>
-            ${result.offcutAction === 'kept' ? `<p>Offcut ${result.offcutWidth}mm × ${lengthM.toLocaleString()} m → ${result.reviewToken ? 'waiting for review' : 'back to inventory'} as ${slots[widths.length].shortNo} (stock ${result.offcutStockNumber})${!result.reviewToken ? '' : reviewEmailSent ? '. Review email sent.' : `. <strong>The review email did not send.</strong> Open ${slots[widths.length].shortNo}'s page and tap Resend Review Email.`}</p>` : ''}
+            ${result.offcutAction === 'kept' ? `<p>Offcut ${result.offcutWidth}mm × ${actual.toLocaleString()} m → ${result.reviewToken ? 'waiting for review' : 'back to inventory'} as ${slots[widths.length].shortNo} (stock ${result.offcutStockNumber})${!result.reviewToken ? '' : reviewEmailSent ? '. Review email sent.' : `. <strong>The review email did not send.</strong> Open ${slots[widths.length].shortNo}'s page and tap Resend Review Email.`}</p>` : ''}
             ${result.offcutAction === 'scrapped' ? `<p>Offcut ${result.offcutWidth}mm scrapped</p>` : ''}
             <p style="font-size: 1.15rem;"><strong>Master now has ${result.remaining.toLocaleString()} m left</strong></p>
             ${result.remaining === 0 ? '<p style="margin-top: 8px;">This master roll is used up.</p>' : ''}
@@ -585,13 +644,14 @@ async function finishRun() {
     } finally {
         isSubmitting = false;
         button.textContent = 'Finish Run';
+        lengthWarned = null;
     }
 }
 
 // ---------- Helpers ----------
 
 function showStep(id) {
-    ['stepScanMaster', 'stepJob', 'stepRun', 'stepLink', 'stepDone'].forEach(step => {
+    ['stepScanMaster', 'stepJob', 'stepRun', 'stepLink', 'stepLength', 'stepDone'].forEach(step => {
         document.getElementById(step).style.display = step === id ? 'block' : 'none';
     });
 }

@@ -49,7 +49,9 @@ const DB = {
     EMAILJS: {
         serviceId: 'service_0kydkrl',
         templateId: 'template_77a2vci',
-        publicKey: 'G6O-fi4Y5oNsqP4p4'
+        publicKey: 'G6O-fi4Y5oNsqP4p4',
+        // "Offcut ready" notice sent when the reviewer saves; its recipient is set in that template. Empty = not sent.
+        readyTemplateId: 'template_f2qha1q'
     },
 
     // Kept offcuts wait for the reviewer's Save / Discard answer before they can be slit.
@@ -600,6 +602,34 @@ const DB = {
             }
         },
 
+        // Tell the floor a saved offcut is ready to slit, with its final stock number. Throws if it could not be sent.
+        async sendReadyEmail(review) {
+            if (!DB.EMAILJS.readyTemplateId) {
+                return false;
+            }
+            const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    service_id: DB.EMAILJS.serviceId,
+                    template_id: DB.EMAILJS.readyTemplateId,
+                    user_id: DB.EMAILJS.publicKey,
+                    template_params: {
+                        label_no: review.labelNo,
+                        lot_number: review.lotNumber,
+                        stock_number: review.stockNumber,
+                        width_mm: review.widthMm,
+                        length_m: review.lengthM,
+                        parent_master: review.parentMasterQR
+                    }
+                })
+            });
+            if (!response.ok) {
+                throw new Error(`Ready email not sent (${response.status})`);
+            }
+            return true;
+        },
+
         // A stock number the reviewer can save: refused if it's badly formed or on another roll.
         // Throws an error whose message is meant for the reviewer.
         async _checkStockNumber(stockNumber, masterRollId) {
@@ -680,7 +710,8 @@ const DB = {
         // Save a run in one transaction: child rolls, linked labels, the offcut, the run, and the master's meters left.
         // Either everything saves or nothing does.
         // offcut: { keep, labelCode } - keep=true puts it back in inventory as its own master roll with the next offcut stock number
-        async finish({ masterRollQR, jobId, widths, lengthM, labelCodes, offcut, userEmail }) {
+        // lengthM is the actual length cut (confirmed after labeling); targetLengthM is what the run was set up for
+        async finish({ masterRollQR, jobId, widths, lengthM, targetLengthM, labelCodes, offcut, userEmail }) {
             const db = DB._getDB();
             const keepOffcut = !!(offcut && offcut.keep);
             if (widths.length !== labelCodes.length) {
@@ -720,8 +751,9 @@ const DB = {
                     throw new Error('This offcut was discarded');
                 }
                 const left = DB.metersLeft(master);
-                if (lengthM > left) {
-                    throw new Error(`Only ${left} m left on this master roll`);
+                // The actual cut can run past the label's length on the last run; the master then stops at 0 m
+                if (!(lengthM > 0)) {
+                    throw new Error('Enter the length cut');
                 }
                 const masterWidth = DB.masterWidth(master);
                 const offcutWidth = masterWidth - widths.reduce((sum, w) => sum + w, 0);
@@ -751,7 +783,7 @@ const DB = {
                 }
 
                 const now = firebase.firestore.FieldValue.serverTimestamp();
-                const remaining = left - lengthM;
+                const remaining = Math.max(0, left - lengthM);
                 const runNumber = (master.runCount || 0) + 1;
 
                 labelCodes.forEach((code, i) => {
@@ -832,6 +864,7 @@ const DB = {
                     lanes: widths.length,
                     widths: widths,
                     lengthM: lengthM,
+                    targetLengthM: targetLengthM || lengthM,
                     labelCodes: labelCodes,
                     offcutWidthMm: offcutWidth,
                     offcutAction: offcutAction,
