@@ -592,6 +592,7 @@ const DB = {
                         width_mm: review.widthMm,
                         length_m: review.lengthM,
                         parent_master: review.parentMasterQR,
+                        job_number: review.jobId || '',
                         save_url: `${reviewUrl}&decision=save`,
                         discard_url: `${reviewUrl}&decision=discard`
                     }
@@ -620,7 +621,8 @@ const DB = {
                         stock_number: review.stockNumber,
                         width_mm: review.widthMm,
                         length_m: review.lengthM,
-                        parent_master: review.parentMasterQR
+                        parent_master: review.parentMasterQR,
+                        job_number: review.jobId || ''
                     }
                 })
             });
@@ -756,10 +758,13 @@ const DB = {
                     throw new Error('Enter the length cut');
                 }
                 const masterWidth = DB.masterWidth(master);
-                const offcutWidth = masterWidth - widths.reduce((sum, w) => sum + w, 0);
-                if (offcutWidth < 0) {
+                const calculatedOffcutWidth = masterWidth - widths.reduce((sum, w) => sum + w, 0);
+                if (calculatedOffcutWidth < 0) {
                     throw new Error(`Rolls add up to more than the ${masterWidth}mm master width`);
                 }
+                // The slitter measures the real offcut: trimmed edges can leave it narrower than calculated
+                const measuredWidth = offcut && offcut.measuredWidthMm;
+                const offcutWidth = measuredWidth > 0 ? measuredWidth : calculatedOffcutWidth;
                 if (keepOffcut && offcutWidth < DB.OFFCUT_MIN_MM) {
                     throw new Error(`Offcuts under ${DB.OFFCUT_MIN_MM}mm are scrapped, not kept`);
                 }
@@ -850,6 +855,7 @@ const DB = {
                             widthMm: offcutWidth,
                             lengthM: lengthM,
                             parentMasterQR: masterRollQR,
+                            jobId: jobId,
                             status: DB.OFFCUT_REVIEW.PENDING,
                             createdBy: userEmail || null,
                             createdAt: now
@@ -867,6 +873,7 @@ const DB = {
                     targetLengthM: targetLengthM || lengthM,
                     labelCodes: labelCodes,
                     offcutWidthMm: offcutWidth,
+                    offcutCalculatedWidthMm: calculatedOffcutWidth,
                     offcutAction: offcutAction,
                     offcutLabelCode: keepOffcut ? offcut.labelCode : null,
                     offcutStockNumber: offcutStock,

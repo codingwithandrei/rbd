@@ -348,7 +348,7 @@ function renderOffcutPanel() {
     panel.innerHTML = offcutKeep ? `
         <div class="info-message">
             <p><strong>Offcut ${offcut}mm × ${lengthM.toLocaleString()} m</strong> goes to inventory as a new master roll (lot ${masterRoll.lotNumber})${DB.OFFCUT_REVIEW_ENABLED ? ', held until the reviewer saves it' : ''}. Label it like the other rolls.</p>
-            <p style="margin: 8px 0 12px;">Stock number: <strong id="offcutStock">…</strong></p>
+            <p style="margin: 8px 0 12px;">Stock number if it measures ${offcut} mm: <strong id="offcutStock">…</strong>. You'll confirm the measured width after labeling.</p>
             <button type="button" class="btn btn-secondary btn-small" onclick="toggleOffcut()">Scrap it instead</button>
         </div>
     ` : `
@@ -527,10 +527,41 @@ function goToConfirmLength() {
         `Target ${lengthM.toLocaleString()} m. Usually ${lengthM.toLocaleString()}–${(lengthM + LENGTH_OVER_MAX).toLocaleString()} m. ${metersLeft.toLocaleString()} m left on the master.`;
     const input = document.getElementById('actualLength');
     if (!input.value) input.value = lengthM;
+
+    // A kept offcut is measured too: trimmed edges can leave it narrower than master width minus the lanes
+    const offcutGroup = document.getElementById('offcutWidthGroup');
+    offcutGroup.style.display = offcutHasSlot() ? 'block' : 'none';
+    if (offcutHasSlot()) {
+        const widthInput = document.getElementById('offcutWidthInput');
+        if (!widthInput.value) widthInput.value = offcutWidth();
+        previewOffcutStock();
+    }
+
     clearLengthWarning();
     document.getElementById('finishError').innerHTML = '';
     showStep('stepLength');
     input.focus();
+}
+
+function measuredOffcutWidth() {
+    return parseInt(document.getElementById('offcutWidthInput').value, 10);
+}
+
+// The stock number follows the measured width, so show what it will be
+function previewOffcutStock() {
+    const hint = document.getElementById('offcutWidthHint');
+    const measured = measuredOffcutWidth();
+    const base = `Calculated ${offcutWidth()} mm (${masterWidthMm} mm master minus the rolls). Enter what you measured.`;
+    if (!measured || measured < DB.OFFCUT_MIN_MM) {
+        hint.textContent = measured ? `${base} Under ${DB.OFFCUT_MIN_MM} mm is scrapped.` : base;
+        return;
+    }
+    hint.textContent = base;
+    DB.nextOffcutStockNumber(measured)
+        .then(stock => {
+            if (measuredOffcutWidth() === measured) hint.textContent = `${base} Stock number: ${stock}.`;
+        })
+        .catch(error => console.error('Error loading next offcut stock number:', error));
 }
 
 function backToLabels() {
@@ -545,15 +576,28 @@ function clearLengthWarning() {
     document.getElementById('finishRunBtn').textContent = 'Finish Run';
 }
 
-// Unusual lengths save only after a second tap, so typos get caught
-function lengthWarning(actual) {
+// Measured offcut can be this much narrower than calculated before it's flagged
+const OFFCUT_TRIM_MAX = 20;
+
+// Unusual lengths or offcut widths save only after a second tap, so typos get caught
+function lengthWarning(actual, measured) {
+    const warnings = [];
     if (actual > metersLeft) {
-        return `${actual.toLocaleString()} m is more than the ${metersLeft.toLocaleString()} m left on the master. It will be marked as used up.`;
+        warnings.push(`${actual.toLocaleString()} m is more than the ${metersLeft.toLocaleString()} m left on the master. It will be marked as used up.`);
+    } else if (actual < lengthM || actual > lengthM + LENGTH_OVER_MAX) {
+        warnings.push(`${actual.toLocaleString()} m is outside the usual ${lengthM.toLocaleString()}–${(lengthM + LENGTH_OVER_MAX).toLocaleString()} m.`);
     }
-    if (actual < lengthM || actual > lengthM + LENGTH_OVER_MAX) {
-        return `${actual.toLocaleString()} m is outside the usual ${lengthM.toLocaleString()}–${(lengthM + LENGTH_OVER_MAX).toLocaleString()} m.`;
+    if (measured) {
+        const calculated = offcutWidth();
+        if (measured < DB.OFFCUT_MIN_MM) {
+            warnings.push(`An offcut of ${measured} mm is under ${DB.OFFCUT_MIN_MM} mm, so it will be scrapped and its label ${slots[widths.length].shortNo} stays blank.`);
+        } else if (measured > calculated) {
+            warnings.push(`The offcut is ${measured} mm, wider than the calculated ${calculated} mm.`);
+        } else if (measured < calculated - OFFCUT_TRIM_MAX) {
+            warnings.push(`The offcut is ${measured} mm, more than ${OFFCUT_TRIM_MAX} mm narrower than the calculated ${calculated} mm.`);
+        }
     }
-    return null;
+    return warnings.length ? warnings.join(' ') : null;
 }
 
 // ---------- Step 5: save ----------
@@ -566,15 +610,22 @@ async function finishRun() {
         document.getElementById('finishError').innerHTML = '<div class="error-message">Enter the actual length cut.</div>';
         return;
     }
-    const warning = lengthWarning(actual);
-    if (warning && lengthWarned !== actual) {
-        lengthWarned = actual;
-        document.getElementById('lengthWarning').innerHTML = `<div class="info-message" style="margin-bottom: 16px;"><strong>Are you sure?</strong> ${warning} Check the number, or tap the button again to save it.</div>`;
-        document.getElementById('finishRunBtn').textContent = `Yes, save ${actual.toLocaleString()} m`;
+    const measured = offcutHasSlot() ? measuredOffcutWidth() : null;
+    if (offcutHasSlot() && (!measured || measured < 1)) {
+        document.getElementById('finishError').innerHTML = '<div class="error-message">Enter the measured offcut width.</div>';
+        return;
+    }
+    const warning = lengthWarning(actual, measured);
+    const warnedFor = `${actual}/${measured}`;
+    if (warning && lengthWarned !== warnedFor) {
+        lengthWarned = warnedFor;
+        document.getElementById('lengthWarning').innerHTML = `<div class="info-message" style="margin-bottom: 16px;"><strong>Are you sure?</strong> ${warning} Check the numbers, or tap the button again to save.</div>`;
+        document.getElementById('finishRunBtn').textContent = 'Yes, save';
         return;
     }
 
-    const keepOffcut = offcutHasSlot();
+    // A measured offcut under the minimum is scrapped after all, and its label stays blank
+    const keepOffcut = offcutHasSlot() && measured >= DB.OFFCUT_MIN_MM;
 
     isSubmitting = true;
     const button = document.getElementById('finishRunBtn');
@@ -592,7 +643,8 @@ async function finishRun() {
             labelCodes: slots.slice(0, widths.length).map(s => s.code),
             offcut: {
                 keep: keepOffcut,
-                labelCode: keepOffcut ? slots[widths.length].code : null
+                labelCode: keepOffcut ? slots[widths.length].code : null,
+                measuredWidthMm: measured
             },
             userEmail: userEmail
         });

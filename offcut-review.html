@@ -45,7 +45,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <script src="firebase-config.js"></script>
     <script src="auth.js"></script>
-    <script src="database.js?v=20261109b"></script>
+    <script src="database.js?v=20261116"></script>
     <script>
         const pageParams = new URLSearchParams(window.location.search);
         const token = pageParams.get('token');
@@ -73,6 +73,7 @@
             [
                 ['Label', review.labelNo],
                 ['Lot', review.lotNumber],
+                ['Job', review.jobId || '-'],
                 ['Stock number', review.stockNumber],
                 ['Width', `${review.widthMm} mm`],
                 ['Length', `${Number(review.lengthM).toLocaleString()} m`],
