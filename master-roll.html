@@ -55,6 +55,24 @@
                         >
                     </div>
 
+                    <div class="form-group">
+                        <label class="form-label">Is this master roll 1300 mm wide? *</label>
+                        <div class="length-options" id="widthOptions">
+                            <div class="size-option selected" data-width="standard" onclick="chooseMasterWidth(this)">Yes, 1300 mm</div>
+                            <div class="size-option" data-width="custom" onclick="chooseMasterWidth(this)">No, other width</div>
+                        </div>
+                        <input
+                            type="number"
+                            id="customWidth"
+                            class="form-input"
+                            placeholder="Enter the width in mm (e.g. 1100)"
+                            min="1"
+                            max="3000"
+                            inputmode="numeric"
+                            style="display: none;"
+                        >
+                    </div>
+
                     <div id="messageContainer"></div>
 
                     <div class="button-group">
@@ -76,9 +94,9 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <script src="firebase-config.js"></script>
     <script src="auth.js"></script>
-    <script src="database.js?v=20261116"></script>
+    <script src="database.js?v=20261117"></script>
     <script src="app.js"></script>
-    <script src="master-roll.js?v=20261103"></script>
+    <script src="master-roll.js?v=20261117"></script>
 </body>
 </html>
 

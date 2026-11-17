@@ -23,8 +23,10 @@ const DB = {
     // this wide or wider goes back to inventory as its own master roll (same lot, new stock number)
     OFFCUT_MIN_MM: 158,
 
-    // Offcut stock numbers: 0410 + width in mm + a 2-digit count per width, e.g. the first 200mm offcut is 041020001.
-    // The count lives in counters/offcut-<width> so it can later be set to match the main system's count.
+    // Offcut stock numbers: 0410 + width in mm + a 2-digit code for the material, e.g. 041020001.
+    // The code is per width: the first material to make a 200mm offcut gets 01, the next material 02, and so on.
+    // Every later 200mm offcut of the same material reuses that material's number.
+    // The next unused code lives in counters/offcut-<width> so it can later be set to match the main system's count.
     OFFCUT_STOCK_PREFIX: '0410',
 
     offcutStockNumber(widthMm, count) {
@@ -35,8 +37,29 @@ const DB = {
         return DB._getDB().collection('counters').doc(`offcut-${widthMm}`);
     },
 
-    // Stock number the next offcut of this width will get (the real one is assigned when the run is saved)
-    async nextOffcutStockNumber(widthMm) {
+    // The material a master roll is made of: its own stock number, or for an offcut, the original master's
+    offcutMaterial(master) {
+        return master.materialStock || master.stockNumber;
+    },
+
+    // Stock number already given to an offcut of this material and width (the latest one, so a reviewer's change sticks), or null
+    async existingOffcutStock(widthMm, material) {
+        if (!material) return null;
+        const snapshot = await DB._getDB().collection('masterRolls').where('materialStock', '==', material).get();
+        const time = d => {
+            const t = d.reviewedAt || d.createdAt;
+            return !t ? 0 : t.toMillis ? t.toMillis() : t.toDate().getTime();
+        };
+        const matches = snapshot.docs.map(doc => doc.data())
+            .filter(d => d.isOffcut && d.widthMm === widthMm && d.stockNumber && !DB.isDiscarded(d))
+            .sort((a, b) => time(b) - time(a));
+        return matches.length ? matches[0].stockNumber : null;
+    },
+
+    // Stock number the next offcut of this width and material will get (the real one is assigned when the run is saved)
+    async nextOffcutStockNumber(widthMm, material) {
+        const existing = await DB.existingOffcutStock(widthMm, material);
+        if (existing) return existing;
         const counter = await DB._offcutCounterRef(widthMm).get();
         return DB.offcutStockNumber(widthMm, counter.exists ? counter.data().next : 1);
     },
@@ -230,7 +253,7 @@ const DB = {
                     lotNumber: data.lotNumber,
                     status: 'registered',
                     currentDepartment: DB.DEPARTMENTS.INVENTORY,
-                    widthMm: DB.MASTER_WIDTH_MM,
+                    widthMm: data.widthMm || DB.MASTER_WIDTH_MM,
                     lengthTotal: data.lengthM || DB.MASTER_LENGTH_M,
                     lengthRemaining: data.lengthM || DB.MASTER_LENGTH_M,
                     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -634,14 +657,16 @@ const DB = {
 
         // A stock number the reviewer can save: refused if it's badly formed or on another roll.
         // Throws an error whose message is meant for the reviewer.
-        async _checkStockNumber(stockNumber, masterRollId) {
+        async _checkStockNumber(stockNumber, review) {
             if (!/^[A-Za-z0-9-]{1,40}$/.test(stockNumber)) {
                 const error = new Error('Enter a stock number using only letters, numbers and dashes.');
                 error.forReviewer = true;
                 throw error;
             }
             const snapshot = await DB._getDB().collection('masterRolls').where('stockNumber', '==', stockNumber).get();
-            const taken = snapshot.docs.find(doc => doc.id !== masterRollId && !DB.isDiscarded(doc.data()));
+            // Offcuts of the same material and width share one stock number
+            const sameMaterial = d => review.materialStock && d.isOffcut && d.materialStock === review.materialStock && d.widthMm === review.widthMm;
+            const taken = snapshot.docs.find(doc => doc.id !== review.masterRollId && !DB.isDiscarded(doc.data()) && !sameMaterial(doc.data()));
             if (taken) {
                 const error = new Error(`Stock number ${stockNumber} is already on lot ${taken.data().lotNumber}. Enter a different one.`);
                 error.forReviewer = true;
@@ -664,7 +689,7 @@ const DB = {
             const status = decision === 'save' ? DB.OFFCUT_REVIEW.APPROVED : DB.OFFCUT_REVIEW.DISCARDED;
             const current = await this.get(token);
             if (current && current.status === DB.OFFCUT_REVIEW.PENDING && decision === 'save') {
-                await this._checkStockNumber(stockNumber, current.masterRollId);
+                await this._checkStockNumber(stockNumber, current);
             }
             return db.runTransaction(async (tx) => {
                 const doc = await tx.get(ref);
@@ -678,7 +703,8 @@ const DB = {
                 const now = firebase.firestore.FieldValue.serverTimestamp();
                 const finalStock = decision === 'save' ? stockNumber : review.stockNumber;
 
-                // If she saved a higher count (numbers up to 10 are already used), the next offcut continues from it
+                // If she saved a higher code (codes up to 10 are already used), the next new material continues from it.
+                // Her number is also kept on the offcut, so later offcuts of this material and width reuse it.
                 const count = decision === 'save' ? this._countFromStock(finalStock, review.widthMm) : null;
                 const counterRef = DB._offcutCounterRef(review.widthMm);
                 const counter = count !== null ? await tx.get(counterRef) : null;
@@ -737,6 +763,13 @@ const DB = {
             const offcutMasterRef = keepOffcut ? db.collection('masterRolls').doc() : null;
             const reviewToken = keepOffcut && DB.OFFCUT_REVIEW_ENABLED ? DB.offcutReviews._newToken() : null;
 
+            // An offcut of a material and width that already has a stock number gets the same one
+            // (looked up before the transaction, since a transaction can only read single documents)
+            const material = DB.offcutMaterial(snapshot.docs[0].data());
+            const plannedWidth = offcut && offcut.measuredWidthMm > 0 ? offcut.measuredWidthMm
+                : DB.masterWidth(snapshot.docs[0].data()) - widths.reduce((sum, w) => sum + w, 0);
+            const existingStock = keepOffcut ? await DB.existingOffcutStock(plannedWidth, material) : null;
+
             return db.runTransaction(async (tx) => {
                 // Firestore needs all reads before any writes
                 const masterDoc = await tx.get(masterRef);
@@ -777,11 +810,14 @@ const DB = {
                     }
                 });
 
-                // Take the next offcut count for this width (read inside the transaction so two runs can't share a number)
+                // Same material and width as an earlier offcut: reuse its number.
+                // A new material takes the next code for this width (read inside the transaction so two runs can't share one).
                 let offcutStock = null;
                 const offcutCounterRef = keepOffcut ? DB._offcutCounterRef(offcutWidth) : null;
-                let offcutCount = 1;
-                if (keepOffcut) {
+                let offcutCount = null;
+                if (keepOffcut && existingStock && offcutWidth === plannedWidth) {
+                    offcutStock = existingStock;
+                } else if (keepOffcut) {
                     const counter = await tx.get(offcutCounterRef);
                     offcutCount = counter.exists ? counter.data().next : 1;
                     offcutStock = DB.offcutStockNumber(offcutWidth, offcutCount);
@@ -826,6 +862,7 @@ const DB = {
                         labelNo: labelDocs[offcutLabelIndex].data().shortNo,
                         lotNumber: master.lotNumber,
                         stockNumber: offcutStock,
+                        materialStock: material,
                         status: 'registered',
                         isOffcut: true,
                         ...(reviewToken ? { reviewStatus: DB.OFFCUT_REVIEW.PENDING } : {}),
@@ -844,7 +881,9 @@ const DB = {
                         masterRollQR: masterRollQR,
                         linkedAt: now
                     });
-                    tx.set(offcutCounterRef, { next: offcutCount + 1 }, { merge: true });
+                    if (offcutCount !== null) {
+                        tx.set(offcutCounterRef, { next: offcutCount + 1 }, { merge: true });
+                    }
                     if (reviewToken) {
                         tx.set(db.collection('offcutReviews').doc(reviewToken), {
                             masterRollId: offcutMasterRef.id,
@@ -852,6 +891,7 @@ const DB = {
                             labelNo: labelDocs[offcutLabelIndex].data().shortNo,
                             lotNumber: master.lotNumber,
                             stockNumber: offcutStock,
+                            materialStock: material,
                             widthMm: offcutWidth,
                             lengthM: lengthM,
                             parentMasterQR: masterRollQR,

@@ -58,6 +58,14 @@ document.addEventListener('DOMContentLoaded', async function() {
             return;
         }
 
+        // Almost every master is 1300 mm; the odd narrower one is typed in
+        const customWidth = document.querySelector('#widthOptions .selected').dataset.width === 'custom';
+        const widthMm = customWidth ? parseInt(document.getElementById('customWidth').value, 10) : DB.MASTER_WIDTH_MM;
+        if (!widthMm || widthMm < 1 || widthMm > 3000) {
+            showMessage('Enter the master roll width in mm.', 'error');
+            return;
+        }
+
         // Determine QR value
         const finalQRValue = qrValue || `${lotNumber}-${stockNumber}`;
 
@@ -102,7 +110,8 @@ document.addEventListener('DOMContentLoaded', async function() {
                 qrValue: finalQRValue,
                 stockNumber: stockNumber,
                 lotNumber: lotNumber,
-                lengthM: lengthM
+                lengthM: lengthM,
+                widthMm: widthMm
             });
 
             // Ensure QR code record exists (should already exist from generation, but double-check)
@@ -131,10 +140,11 @@ document.addEventListener('DOMContentLoaded', async function() {
             }
 
             console.log('✓ Master roll saved and verified:', verifyRoll);
-            showMessage(`Master roll marked as received successfully! ${lengthM.toLocaleString()} m, ready for slitting.`, 'success');
+            showMessage(`Master roll marked as received successfully! ${widthMm} mm × ${lengthM.toLocaleString()} m, ready for slitting.`, 'success');
             
             // Clear form
             form.reset();
+            chooseMasterWidth(document.querySelector('#widthOptions [data-width="standard"]'));
 
             // Redirect to home after delay
             setTimeout(() => {
@@ -162,3 +172,13 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
 });
 
+
+// Yes (1300 mm) or No (type the width)
+function chooseMasterWidth(option) {
+    document.querySelectorAll('#widthOptions .size-option').forEach(opt => opt.classList.toggle('selected', opt === option));
+    const input = document.getElementById('customWidth');
+    const custom = option.dataset.width === 'custom';
+    input.style.display = custom ? 'block' : 'none';
+    input.required = custom;
+    if (custom) input.focus();
+}
