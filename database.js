@@ -37,28 +37,41 @@ const DB = {
         return DB._getDB().collection('counters').doc(`offcut-${widthMm}`);
     },
 
-    // The material a master roll is made of: its own stock number, or for an offcut, the original master's
-    offcutMaterial(master) {
-        return master.materialStock || master.stockNumber;
+    // The material a master roll is made of: its own stock number, or for an offcut, the original master's.
+    // Offcuts cut before materials were recorded are traced back through the master they were cut from.
+    async materialOf(master, depth = 0) {
+        if (!master) return null;
+        if (master.materialStock) return master.materialStock;
+        if (master.isOffcut && master.parentMasterQR && depth < 10) {
+            const parent = await DB.masterRolls.getByQR(master.parentMasterQR);
+            if (parent) return DB.materialOf(parent, depth + 1);
+        }
+        return master.stockNumber;
     },
 
-    // Stock number already given to an offcut of this material and width (the latest one, so a reviewer's change sticks), or null
-    async existingOffcutStock(widthMm, material) {
-        if (!material) return null;
-        const snapshot = await DB._getDB().collection('masterRolls').where('materialStock', '==', material).get();
+    // Offcuts of this width and material already in the system (not discarded), latest first
+    async _sameMaterialOffcuts(widthMm, material) {
+        if (!material) return [];
+        const snapshot = await DB._getDB().collection('masterRolls').where('widthMm', '==', widthMm).get();
+        const offcuts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+            .filter(d => d.isOffcut && d.stockNumber && !DB.isDiscarded(d));
+        const materials = await Promise.all(offcuts.map(d => DB.materialOf(d)));
         const time = d => {
             const t = d.reviewedAt || d.createdAt;
             return !t ? 0 : t.toMillis ? t.toMillis() : t.toDate().getTime();
         };
-        const matches = snapshot.docs.map(doc => doc.data())
-            .filter(d => d.isOffcut && d.widthMm === widthMm && d.stockNumber && !DB.isDiscarded(d))
-            .sort((a, b) => time(b) - time(a));
+        return offcuts.filter((d, i) => materials[i] === material).sort((a, b) => time(b) - time(a));
+    },
+
+    // Stock number already given to an offcut of this material and width (the latest one, so a reviewer's change sticks), or null
+    async existingOffcutStock(widthMm, material) {
+        const matches = await DB._sameMaterialOffcuts(widthMm, material);
         return matches.length ? matches[0].stockNumber : null;
     },
 
-    // Stock number the next offcut of this width and material will get (the real one is assigned when the run is saved)
-    async nextOffcutStockNumber(widthMm, material) {
-        const existing = await DB.existingOffcutStock(widthMm, material);
+    // Stock number the next offcut of this width cut from this master will get (the real one is assigned when the run is saved)
+    async nextOffcutStockNumber(widthMm, master) {
+        const existing = await DB.existingOffcutStock(widthMm, await DB.materialOf(master));
         if (existing) return existing;
         const counter = await DB._offcutCounterRef(widthMm).get();
         return DB.offcutStockNumber(widthMm, counter.exists ? counter.data().next : 1);
@@ -664,13 +677,20 @@ const DB = {
                 throw error;
             }
             const snapshot = await DB._getDB().collection('masterRolls').where('stockNumber', '==', stockNumber).get();
-            // Offcuts of the same material and width share one stock number
-            const sameMaterial = d => review.materialStock && d.isOffcut && d.materialStock === review.materialStock && d.widthMm === review.widthMm;
-            const taken = snapshot.docs.find(doc => doc.id !== review.masterRollId && !DB.isDiscarded(doc.data()) && !sameMaterial(doc.data()));
-            if (taken) {
-                const error = new Error(`Stock number ${stockNumber} is already on lot ${taken.data().lotNumber}. Enter a different one.`);
-                error.forReviewer = true;
-                throw error;
+            const others = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+                .filter(d => d.id !== review.masterRollId && !DB.isDiscarded(d));
+            if (!others.length) return;
+            // Offcuts of the same material and width share one stock number, whatever their lot
+            const material = review.materialStock
+                || await DB.materialOf({ isOffcut: true, parentMasterQR: review.parentMasterQR, stockNumber: review.stockNumber });
+            for (const other of others) {
+                const sameMaterial = other.isOffcut && other.widthMm === review.widthMm && await DB.materialOf(other) === material;
+                if (!sameMaterial) {
+                    const otherMaterial = other.isOffcut ? await DB.materialOf(other) : other.stockNumber;
+                    const error = new Error(`Stock number ${stockNumber} is already used for a different material (lot ${other.lotNumber}, master stock ${otherMaterial}${other.isOffcut ? `, ${other.widthMm} mm` : ''}). This offcut's master stock is ${material}. Enter a different number.`);
+                    error.forReviewer = true;
+                    throw error;
+                }
             }
         },
 
@@ -765,7 +785,7 @@ const DB = {
 
             // An offcut of a material and width that already has a stock number gets the same one
             // (looked up before the transaction, since a transaction can only read single documents)
-            const material = DB.offcutMaterial(snapshot.docs[0].data());
+            const material = await DB.materialOf(snapshot.docs[0].data());
             const plannedWidth = offcut && offcut.measuredWidthMm > 0 ? offcut.measuredWidthMm
                 : DB.masterWidth(snapshot.docs[0].data()) - widths.reduce((sum, w) => sum + w, 0);
             const existingStock = keepOffcut ? await DB.existingOffcutStock(plannedWidth, material) : null;

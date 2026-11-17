@@ -358,7 +358,7 @@ function renderOffcutPanel() {
         </div>
     `;
     if (offcutKeep) {
-        DB.nextOffcutStockNumber(offcut, DB.offcutMaterial(masterRoll))
+        DB.nextOffcutStockNumber(offcut, masterRoll)
             .then(stock => {
                 const el = document.getElementById('offcutStock');
                 if (el) el.textContent = stock;
@@ -557,7 +557,7 @@ function previewOffcutStock() {
         return;
     }
     hint.textContent = base;
-    DB.nextOffcutStockNumber(measured, DB.offcutMaterial(masterRoll))
+    DB.nextOffcutStockNumber(measured, masterRoll)
         .then(stock => {
             if (measuredOffcutWidth() === measured) hint.textContent = `${base} Stock number: ${stock}.`;
         })
