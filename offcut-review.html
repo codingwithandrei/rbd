@@ -45,7 +45,7 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <script src="firebase-config.js"></script>
     <script src="auth.js"></script>
-    <script src="database.js?v=20261118"></script>
+    <script src="database.js?v=20261119"></script>
     <script>
         const pageParams = new URLSearchParams(window.location.search);
         const token = pageParams.get('token');
@@ -109,16 +109,23 @@
                 const stockNumber = document.getElementById('reviewStock').value.trim();
                 const result = await DB.offcutReviews.answer(token, decision, stockNumber);
                 showAnswered(result);
-                // The save stands either way; only say something if the floor wasn't told
-                if (result.status === 'approved' && !result.alreadyAnswered) {
+                // The answer stands either way; only say something if the notice email didn't go out
+                if (!result.alreadyAnswered) {
+                    const saved = result.status === 'approved';
                     try {
-                        await DB.offcutReviews.sendReadyEmail(result);
+                        if (saved) {
+                            await DB.offcutReviews.sendReadyEmail(result);
+                        } else {
+                            await DB.offcutReviews.sendDiscardedEmail(result);
+                        }
                     } catch (error) {
-                        console.error('Error sending ready email:', error);
+                        console.error('Error sending notice email:', error);
                         const note = document.createElement('p');
                         note.style.marginTop = '8px';
-                        note.textContent = 'The offcut is saved, but the "offcut ready" email did not send. Please let the floor know.';
-                        document.querySelector('#reviewMessage .success-message').appendChild(note);
+                        note.textContent = saved
+                            ? 'The offcut is saved, but the "offcut ready" email did not send. Please let the floor know.'
+                            : 'The offcut is discarded, but the email to the inventory clerk did not send. Please let them know to dispose of it.';
+                        document.querySelector('#reviewMessage > div').appendChild(note);
                     }
                 }
             } catch (error) {

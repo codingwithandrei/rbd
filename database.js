@@ -86,7 +86,9 @@ const DB = {
         serviceId: 'service_0kydkrl',
         templateId: 'template_77a2vci',
         publicKey: 'G6O-fi4Y5oNsqP4p4',
-        // "Offcut ready" notice sent when the reviewer saves; its recipient is set in that template. Empty = not sent.
+        // Notice to the inventory clerk once the reviewer answers: "ready to slit" on Save, "dispose of it" on Discard.
+        // One template serves both (the free plan allows two templates); its recipient is set in that template.
+        // Empty = not sent.
         readyTemplateId: 'template_f2qha1q'
     },
 
@@ -641,7 +643,30 @@ const DB = {
 
         // Tell the floor a saved offcut is ready to slit, with its final stock number. Throws if it could not be sent.
         async sendReadyEmail(review) {
-            if (!DB.EMAILJS.readyTemplateId) {
+            return this._sendNotice(review, {
+                status: 'Ready',
+                ref: `stock ${review.stockNumber}`,
+                headline: 'Offcut ready to slit',
+                message: 'This offcut was reviewed and saved to inventory. It can now be slit.',
+                stock_number: review.stockNumber
+            });
+        },
+
+        // Tell the inventory clerk a kept offcut was discarded (rejected) so it gets thrown out. Throws if it could not be sent.
+        async sendDiscardedEmail(review) {
+            return this._sendNotice(review, {
+                status: 'Discarded',
+                ref: `label ${review.labelNo}`,
+                headline: 'Offcut discarded: dispose of it',
+                message: 'This offcut was reviewed and rejected. Please dispose of it. Do not put it in storage.',
+                stock_number: 'none (discarded)'
+            });
+        },
+
+        // Send the notice email about an answered review. False if the template isn't set up.
+        async _sendNotice(review, wording) {
+            const templateId = DB.EMAILJS.readyTemplateId;
+            if (!templateId) {
                 return false;
             }
             const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
@@ -649,21 +674,21 @@ const DB = {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     service_id: DB.EMAILJS.serviceId,
-                    template_id: DB.EMAILJS.readyTemplateId,
+                    template_id: templateId,
                     user_id: DB.EMAILJS.publicKey,
                     template_params: {
                         label_no: review.labelNo,
                         lot_number: review.lotNumber,
-                        stock_number: review.stockNumber,
                         width_mm: review.widthMm,
                         length_m: review.lengthM,
                         parent_master: review.parentMasterQR,
-                        job_number: review.jobId || ''
+                        job_number: review.jobId || '',
+                        ...wording
                     }
                 })
             });
             if (!response.ok) {
-                throw new Error(`Ready email not sent (${response.status})`);
+                throw new Error(`${wording.status} email not sent (${response.status})`);
             }
             return true;
         },
