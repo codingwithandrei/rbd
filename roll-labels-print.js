@@ -1,4 +1,5 @@
-// Child roll labels (4x3): logo + QR on top, big label number below.
+// Child roll labels (4x3): logo + QR (with "SCAN ME" under it) on top, big label number below.
+// Customers who scan it see the date, lot, job and stock on the roll page.
 // Blank labels show only the number; linked labels also show lot, stock, size, length and job.
 const RollLabelPrint = {
     // Add one label to a container and draw its QR code
@@ -11,7 +12,10 @@ const RollLabelPrint = {
                     <div class="label-logo">
                         <img src="rbd-logo.png.png" alt="RBD Logo" />
                     </div>
-                    <div class="label-qr-code" id="${qrElementId}"></div>
+                    <div class="label-qr-col">
+                        <div class="label-qr-code" id="${qrElementId}"></div>
+                        <div class="label-scan-me">SCAN ME</div>
+                    </div>
                 </div>
                 <div class="label-info">
                     ${roll ? `

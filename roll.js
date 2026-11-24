@@ -148,7 +148,50 @@ function statusText(r) {
     return 'Used for Job';
 }
 
+// What a customer sees when they scan the label: the date it was made (printed, or slit if it skipped Printing),
+// lot, job and stock. Status, size and length stay internal.
+function renderCustomerView() {
+    document.getElementById('rollSubtitle').textContent = 'RBD Packaging';
+    document.getElementById('rollMessage').innerHTML = '';
+    const madeAt = roll.printingJobAt || roll.createdAt;
+    const items = [
+        ['Date', madeAt ? new Date(madeAt).toLocaleDateString() : '-'],
+        ['Lot', roll.lotNumber],
+        ['Job', roll.printingJobId || roll.usedJobId || roll.jobId || '-'],
+        ['Stock', roll.stockNumber]
+    ];
+    const grid = document.createElement('div');
+    grid.className = 'roll-info-grid';
+    items.forEach(([k, v]) => {
+        const item = document.createElement('div');
+        item.className = 'roll-info-item';
+        const key = document.createElement('span');
+        key.className = 'k';
+        key.textContent = k;
+        const value = document.createElement('span');
+        value.className = 'v';
+        value.textContent = v;
+        item.append(key, value);
+        grid.appendChild(item);
+    });
+    const info = document.getElementById('rollInfo');
+    info.innerHTML = '';
+    info.appendChild(grid);
+    document.getElementById('rollActions').style.display = 'none';
+    document.getElementById('printingJob').style.display = 'none';
+    // Home is the workers' app, so customers don't get the floating Home button
+    const home = document.querySelector('.floating-home-button');
+    if (home) home.style.display = 'none';
+    // No sign-in button for customers; staff get a quiet link instead
+    document.getElementById('rollButtons').innerHTML =
+        '<a href="#" class="staff-signin-link" onclick="signInToUpdate(); return false;">RBD staff sign in</a>';
+}
+
 function renderRoll() {
+    if (!signedIn) {
+        renderCustomerView();
+        return;
+    }
     document.getElementById('rollSubtitle').textContent = `${roll.width}mm × ${roll.lengthM} m`;
     document.getElementById('rollMessage').innerHTML = '';
 

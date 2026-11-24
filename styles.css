@@ -1644,3 +1644,53 @@ body {
     }
 }
 
+
+/* "SCAN ME" under the roll label QR: the QR shrinks a little so the column keeps its 1.6in height */
+.roll-label .label-qr-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 0 0 auto;
+}
+
+#printView .roll-label .label-qr-code canvas,
+#printView .roll-label .label-qr-code img,
+.label-preview .roll-label .label-qr-code canvas,
+.label-preview .roll-label .label-qr-code img,
+.roll-label .label-qr-code canvas,
+.roll-label .label-qr-code img {
+    width: 1.38in !important;
+    height: 1.38in !important;
+    max-width: 1.38in !important;
+    max-height: 1.38in !important;
+}
+
+.roll-label .label-scan-me {
+    font-family: Arial, sans-serif;
+    font-size: 0.17in;
+    font-weight: 800;
+    letter-spacing: 0.03in;
+    color: #000;
+    line-height: 1;
+    margin-top: 0.05in;
+}
+
+/* Quiet sign-in link on the customer view of a roll */
+.staff-signin-link {
+    display: block;
+    width: 100%;
+    text-align: center;
+    font-size: 0.85rem;
+    color: var(--gray-600);
+}
+
+@media screen and (max-width: 480px) {
+    .label-preview .roll-label .label-qr-code canvas,
+    .label-preview .roll-label .label-qr-code img {
+        width: 27vw !important;
+        height: 27vw !important;
+        max-width: 27vw !important;
+        max-height: 27vw !important;
+    }
+    .label-preview .roll-label .label-scan-me { font-size: 3.2vw; }
+}
